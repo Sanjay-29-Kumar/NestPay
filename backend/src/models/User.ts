@@ -1,6 +1,6 @@
-import mongoose from "mongoose";
+import { Schema, model } from "mongoose";
 
-const userSchema = new mongoose.Schema(
+const userSchema = new Schema(
     {
         name: {
             type: String,
@@ -21,10 +21,9 @@ const userSchema = new mongoose.Schema(
             required: true,
         },
 
-        role: {
+        googleId: {
             type: String,
-            enum: ["OWNER", "MANAGER", "TENANT"],
-            default: "OWNER",
+            default: null,
         },
 
         isEmailVerified: {
@@ -32,14 +31,10 @@ const userSchema = new mongoose.Schema(
             default: false,
         },
 
-        googleId: {
+        status: {
             type: String,
-            default: null,
-        },
-
-        profilePicture: {
-            type: String,
-            default: null,
+            enum: ["ACTIVE", "INACTIVE", "BLOCKED"],
+            default: "ACTIVE",
         },
     },
     {
@@ -47,6 +42,6 @@ const userSchema = new mongoose.Schema(
     }
 );
 
-const User = mongoose.model("User", userSchema);
+const User = model("User", userSchema);
 
 export default User;

@@ -1,4 +1,8 @@
 import mongoose from "mongoose";
+import dns from "dns";
+
+// Fix Node.js DNS SRV record resolution issue (ECONNREFUSED) on local ISP/Windows DNS
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 async function connectDB() {
     try {
