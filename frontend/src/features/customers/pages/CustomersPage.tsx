@@ -19,6 +19,7 @@ import {
 } from "../services/customersApi";
 import { getPropertiesApi, type PropertyItem } from "@/features/properties/services/propertiesApi";
 import { getUnitsApi, type UnitItem } from "@/features/units/services/unitsApi";
+import { sendWhatsAppRentReminderApi } from "@/features/notifications/services/notificationsApi";
 
 export function CustomersPage() {
     const { activeMembership } = useSelector((state: RootState) => state.organization);
@@ -38,6 +39,20 @@ export function CustomersPage() {
     const [assignDrawerOpen, setAssignDrawerOpen] = useState<boolean>(false);
     const [editingCustomer, setEditingCustomer] = useState<CustomerItem | null>(null);
     const [selectedCustomerForAssign, setSelectedCustomerForAssign] = useState<CustomerItem | null>(null);
+
+    // WhatsApp Rent Reminder Drawer state
+    const [reminderDrawerOpen, setReminderDrawerOpen] = useState<boolean>(false);
+    const [selectedCustomerForReminder, setSelectedCustomerForReminder] = useState<CustomerItem | null>(null);
+    const [reminderFormData, setReminderFormData] = useState({
+        tenantPhone: "",
+        tenantName: "",
+        rentAmount: "1200",
+        unitNumber: "101",
+        dueDate: "10th August 2026",
+        reminderEvent: "7TH",
+    });
+    const [reminderSending, setReminderSending] = useState<boolean>(false);
+    const [reminderFeedback, setReminderFeedback] = useState<{ type: "success" | "error"; message: string; messageId?: string } | null>(null);
 
     const [saving, setSaving] = useState<boolean>(false);
     const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -111,20 +126,68 @@ export function CustomersPage() {
             phone: c.phone,
             occupation: c.occupation || "",
             nationality: c.nationality || "",
-            emergencyContact: c.emergencyContact || { name: "", phone: "", relationship: "" },
-            status: c.status,
+            emergencyContact: {
+                name: c.emergencyContact?.name || "",
+                phone: c.emergencyContact?.phone || "",
+                relationship: c.emergencyContact?.relationship || "",
+            },
         });
         setDrawerOpen(true);
     };
 
     const handleOpenAssign = (c: CustomerItem) => {
         setSelectedCustomerForAssign(c);
-        setAssignPropId(c.propertyId?._id || (propertiesList.length > 0 ? propertiesList[0]._id : ""));
-        setAssignUnitId(c.unitId?._id || "");
+        setAssignPropId(typeof c.propertyId === "object" ? c.propertyId?._id || "" : c.propertyId || "");
+        setAssignUnitId(typeof c.unitId === "object" ? c.unitId?._id || "" : c.unitId || "");
         setAssignDrawerOpen(true);
     };
 
-    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleOpenReminder = (c: CustomerItem) => {
+        setSelectedCustomerForReminder(c);
+        setReminderFeedback(null);
+        setReminderFormData({
+            tenantPhone: c.phone || "919677708612",
+            tenantName: c.name || "Tenant",
+            rentAmount: c.unitId?.rentAmount ? String(c.unitId.rentAmount) : "1200",
+            unitNumber: c.unitId?.unitNumber ? String(c.unitId.unitNumber) : "101",
+            dueDate: "10th August 2026",
+            reminderEvent: "7TH",
+        });
+        setReminderDrawerOpen(true);
+    };
+
+    const handleSendRentReminder = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setReminderSending(true);
+        setReminderFeedback(null);
+
+        const res = await sendWhatsAppRentReminderApi({
+            organizationId: orgId,
+            tenantPhone: reminderFormData.tenantPhone,
+            tenantName: reminderFormData.tenantName,
+            rentAmount: reminderFormData.rentAmount,
+            unitNumber: reminderFormData.unitNumber,
+            dueDate: reminderFormData.dueDate,
+            reminderEvent: reminderFormData.reminderEvent,
+        });
+
+        setReminderSending(false);
+
+        if (res.success) {
+            setReminderFeedback({
+                type: "success",
+                message: res.message || "Rent reminder dispatched successfully via WhatsApp!",
+                messageId: res.messageId,
+            });
+        } else {
+            setReminderFeedback({
+                type: "error",
+                message: res.message || "Failed to dispatch WhatsApp rent reminder.",
+            });
+        }
+    };
+
+    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         if (name.startsWith("emergencyContact.")) {
             const field = name.split(".")[1];
@@ -156,7 +219,7 @@ export function CustomersPage() {
         setSaving(false);
 
         if (res.success) {
-            setFeedback({ type: "success", message: editingCustomer ? "Customer record updated." : "Customer created." });
+            setFeedback({ type: "success", message: editingCustomer ? "Customer updated." : "Customer created." });
             setDrawerOpen(false);
             fetchCustomers();
         } else {
@@ -164,40 +227,35 @@ export function CustomersPage() {
         }
     };
 
-    const handleSaveAssignment = async (e: React.FormEvent) => {
+    const handleSaveAssign = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!orgId || !selectedCustomerForAssign || !assignPropId || !assignUnitId) return;
+        if (!orgId || !selectedCustomerForAssign) return;
 
         setSaving(true);
         const res = await assignCustomerUnitApi(orgId, selectedCustomerForAssign._id, assignPropId, assignUnitId);
         setSaving(false);
 
         if (res.success) {
-            setFeedback({ type: "success", message: "Customer assigned to unit successfully." });
+            setFeedback({ type: "success", message: "Unit assigned successfully." });
             setAssignDrawerOpen(false);
             fetchCustomers();
-            fetchPropertiesAndUnits();
         } else {
-            setFeedback({ type: "error", message: res.message || "Assignment failed." });
+            setFeedback({ type: "error", message: res.message || "Failed to assign unit." });
         }
     };
 
-    const handleDelete = async (cId: string) => {
+    const handleDelete = async (customerId: string) => {
         if (!orgId) return;
         if (!window.confirm("Are you sure you want to delete this customer record?")) return;
 
-        const res = await deleteCustomerApi(orgId, cId);
+        const res = await deleteCustomerApi(orgId, customerId);
         if (res.success) {
-            setFeedback({ type: "success", message: "Customer record deleted." });
+            setFeedback({ type: "success", message: "Customer deleted." });
             fetchCustomers();
         } else {
             setFeedback({ type: "error", message: res.message || "Failed to delete customer." });
         }
     };
-
-    const availableUnitsForProperty = unitsList.filter(
-        (u) => typeof u.propertyId === "object" && u.propertyId._id === assignPropId
-    );
 
     if (!orgId) {
         return (
@@ -205,7 +263,7 @@ export function CustomersPage() {
                 <Breadcrumbs items={[{ label: "Dashboard", path: "/dashboard" }, { label: "Customers" }]} />
                 <EmptyState
                     title="No Active Workspace"
-                    description="Please select an organization workspace to view customers."
+                    description="Please select an organization workspace to manage customers and tenants."
                     actionLabel="Select Workspace"
                     onAction={() => (window.location.href = "/select-workspace")}
                 />
@@ -213,19 +271,25 @@ export function CustomersPage() {
         );
     }
 
+    const availableUnitsForSelectedProp = unitsList.filter((u) => {
+        if (!assignPropId) return true;
+        const propIdStr = typeof u.propertyId === "object" ? u.propertyId?._id : u.propertyId;
+        return propIdStr === assignPropId;
+    });
+
     return (
         <MainLayout>
             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
                 {/* Header */}
                 <div>
-                    <Breadcrumbs items={[{ label: "Dashboard", path: "/dashboard" }, { label: "Customers / Residents" }]} />
+                    <Breadcrumbs items={[{ label: "Dashboard", path: "/dashboard" }, { label: "Customers" }]} />
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
                         <div>
                             <h1 style={{ fontSize: "1.75rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
-                                Customers & Residents Master Data
+                                Customers & Tenants Directory
                             </h1>
                             <p style={{ color: "#64748b", fontSize: "0.95rem", margin: "4px 0 0 0" }}>
-                                Store resident profiles, emergency contacts, occupation, and unit assignments.
+                                Manage workspace tenants, unit allocations, and automated WhatsApp rent reminders.
                             </p>
                         </div>
                         {canManage && (
@@ -252,23 +316,23 @@ export function CustomersPage() {
                 )}
 
                 {/* Metrics Banner */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
                     <Card>
                         <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600 }}>Total Customers</div>
                         <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#0f172a", marginTop: "4px" }}>{stats.totalCount}</div>
                     </Card>
                     <Card>
-                        <div style={{ fontSize: "0.85rem", color: "#16a34a", fontWeight: 600 }}>Active Residents</div>
+                        <div style={{ fontSize: "0.85rem", color: "#16a34a", fontWeight: 600 }}>Active Tenants</div>
                         <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#16a34a", marginTop: "4px" }}>{stats.activeCount}</div>
                     </Card>
                 </div>
 
-                {/* Search & Filter */}
+                {/* Filter & Search Bar */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", background: "#ffffff", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
                     <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: "8px", flex: 1, flexWrap: "wrap" }}>
                         <input
                             type="text"
-                            placeholder="Search by customer name, email, or phone..."
+                            placeholder="Search customer name, email, or phone..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             style={{
@@ -277,7 +341,7 @@ export function CustomersPage() {
                                 border: "1px solid #cbd5e1",
                                 fontSize: "0.9rem",
                                 flex: 1,
-                                minWidth: "220px",
+                                minWidth: "240px",
                             }}
                         />
                         <select
@@ -287,7 +351,7 @@ export function CustomersPage() {
                         >
                             <option value="">All Statuses</option>
                             <option value="ACTIVE">Active</option>
-                            <option value="PAST">Past Resident</option>
+                            <option value="PAST">Past</option>
                             <option value="PENDING">Pending</option>
                         </select>
                         <Button variant="outline" type="submit">
@@ -296,13 +360,13 @@ export function CustomersPage() {
                     </form>
                 </div>
 
-                {/* Customer List Cards */}
+                {/* Customers Grid */}
                 {loading ? (
                     <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>Loading customers...</div>
                 ) : customers.length === 0 ? (
                     <EmptyState
                         title="No Customers Found"
-                        description="Start by adding your first customer or resident to this workspace."
+                        description="Start by adding your first customer or tenant."
                         actionLabel={canManage ? "+ Add First Customer" : undefined}
                         onAction={canManage ? handleOpenAdd : undefined}
                     />
@@ -349,8 +413,8 @@ export function CustomersPage() {
 
                                     <div style={{ fontSize: "0.85rem", color: "#475569", background: "#f8fafc", padding: "10px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
                                         <div><strong>Phone:</strong> {c.phone}</div>
-                                        <div><strong>Assigned Property:</strong> {c.propertyId?.name || "Unassigned"}</div>
-                                        <div><strong>Assigned Unit:</strong> {c.unitId?.unitNumber ? `Unit ${c.unitId.unitNumber} ($${c.unitId.rentAmount}/mo)` : "Unassigned"}</div>
+                                        <div><strong>Assigned Property:</strong> {typeof c.propertyId === 'object' ? c.propertyId?.name : "Unassigned"}</div>
+                                        <div><strong>Assigned Unit:</strong> {typeof c.unitId === 'object' && c.unitId?.unitNumber ? `Unit ${c.unitId.unitNumber} ($${c.unitId.rentAmount}/mo)` : "Unassigned"}</div>
                                     </div>
 
                                     {c.emergencyContact?.name && (
@@ -360,16 +424,21 @@ export function CustomersPage() {
                                     )}
 
                                     {canManage && (
-                                        <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
-                                            <Button variant="outline" onClick={() => handleOpenAssign(c)}>
-                                                Assign Unit
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+                                            <Button variant="primary" size="sm" onClick={() => handleOpenReminder(c)}>
+                                                💬 Send WhatsApp Rent Reminder
                                             </Button>
-                                            <Button variant="outline" onClick={() => handleOpenEdit(c)}>
-                                                Edit
-                                            </Button>
-                                            <Button variant="outline" onClick={() => handleDelete(c._id)}>
-                                                Delete
-                                            </Button>
+                                            <div style={{ display: "flex", gap: "8px" }}>
+                                                <Button variant="outline" size="sm" onClick={() => handleOpenAssign(c)} style={{ flex: 1 }}>
+                                                    Assign Unit
+                                                </Button>
+                                                <Button variant="outline" size="sm" onClick={() => handleOpenEdit(c)} style={{ flex: 1 }}>
+                                                    Edit
+                                                </Button>
+                                                <Button variant="outline" size="sm" onClick={() => handleDelete(c._id)} style={{ flex: 1 }}>
+                                                    Delete
+                                                </Button>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -378,7 +447,7 @@ export function CustomersPage() {
                     </div>
                 )}
 
-                {/* Add/Edit Drawer */}
+                {/* Add/Edit Customer Drawer */}
                 <Drawer
                     isOpen={drawerOpen}
                     onClose={() => setDrawerOpen(false)}
@@ -456,7 +525,7 @@ export function CustomersPage() {
                                 Cancel
                             </Button>
                             <Button variant="primary" type="submit" disabled={saving}>
-                                {saving ? "Saving..." : "Save Record"}
+                                {saving ? "Saving..." : editingCustomer ? "Update Customer" : "Create Customer"}
                             </Button>
                         </div>
                     </form>
@@ -466,22 +535,21 @@ export function CustomersPage() {
                 <Drawer
                     isOpen={assignDrawerOpen}
                     onClose={() => setAssignDrawerOpen(false)}
-                    title="Assign Customer to Unit"
-                    subtitle={`Assign ${selectedCustomerForAssign?.name} to a property unit.`}
+                    title={`Assign Unit for ${selectedCustomerForAssign?.name || ""}`}
+                    subtitle="Associate customer with property and unit."
                 >
-                    <form onSubmit={handleSaveAssignment} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                    <form onSubmit={handleSaveAssign} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>Select Property *</label>
+                            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>Property</label>
                             <select
                                 value={assignPropId}
                                 onChange={(e) => {
                                     setAssignPropId(e.target.value);
                                     setAssignUnitId("");
                                 }}
-                                required
                                 style={{ padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.9rem" }}
                             >
-                                <option value="" disabled>Select Property</option>
+                                <option value="">Select Property</option>
                                 {propertiesList.map((p) => (
                                     <option key={p._id} value={p._id}>
                                         {p.name} ({p.code})
@@ -491,17 +559,16 @@ export function CustomersPage() {
                         </div>
 
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>Select Unit *</label>
+                            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>Unit</label>
                             <select
                                 value={assignUnitId}
                                 onChange={(e) => setAssignUnitId(e.target.value)}
-                                required
                                 style={{ padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.9rem" }}
                             >
                                 <option value="">Select Unit</option>
-                                {availableUnitsForProperty.map((u) => (
+                                {availableUnitsForSelectedProp.map((u) => (
                                     <option key={u._id} value={u._id}>
-                                        Unit {u.unitNumber} ({u.unitType}) - ${u.rentAmount}/mo [{u.status}]
+                                        Unit {u.unitNumber} - ${u.rentAmount}/mo ({u.status})
                                     </option>
                                 ))}
                             </select>
@@ -512,7 +579,107 @@ export function CustomersPage() {
                                 Cancel
                             </Button>
                             <Button variant="primary" type="submit" disabled={saving}>
-                                {saving ? "Assigning..." : "Assign Unit"}
+                                {saving ? "Saving..." : "Save Assignment"}
+                            </Button>
+                        </div>
+                    </form>
+                </Drawer>
+
+                {/* Send WhatsApp Rent Reminder Drawer */}
+                <Drawer
+                    isOpen={reminderDrawerOpen}
+                    onClose={() => setReminderDrawerOpen(false)}
+                    title={`Send WhatsApp Rent Reminder`}
+                    subtitle={`Dispatch official Meta Cloud API WhatsApp reminder for ${selectedCustomerForReminder?.name || "tenant"}`}
+                >
+                    <form onSubmit={handleSendRentReminder} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                        {reminderFeedback && (
+                            <div
+                                style={{
+                                    padding: "12px 14px",
+                                    borderRadius: "8px",
+                                    fontSize: "0.88rem",
+                                    backgroundColor: reminderFeedback.type === "success" ? "#f0fdf4" : "#fef2f2",
+                                    color: reminderFeedback.type === "success" ? "#166534" : "#991b1b",
+                                    border: `1px solid ${reminderFeedback.type === "success" ? "#bbf7d0" : "#fecaca"}`,
+                                }}
+                            >
+                                <div style={{ fontWeight: 700 }}>{reminderFeedback.message}</div>
+                                {reminderFeedback.messageId && (
+                                    <div style={{ marginTop: "4px", fontSize: "0.78rem", wordBreak: "break-all" }}>
+                                        Meta Message ID: <code>{reminderFeedback.messageId}</code>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <Input
+                            label="Tenant Full Name *"
+                            name="tenantName"
+                            value={reminderFormData.tenantName}
+                            onChange={(e) => setReminderFormData({ ...reminderFormData, tenantName: e.target.value })}
+                            required
+                        />
+
+                        <Input
+                            label="Tenant WhatsApp Phone Number (with Country Code) *"
+                            name="tenantPhone"
+                            value={reminderFormData.tenantPhone}
+                            onChange={(e) => setReminderFormData({ ...reminderFormData, tenantPhone: e.target.value })}
+                            required
+                        />
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                            <Input
+                                label="Rent Amount ($) *"
+                                name="rentAmount"
+                                value={reminderFormData.rentAmount}
+                                onChange={(e) => setReminderFormData({ ...reminderFormData, rentAmount: e.target.value })}
+                                required
+                            />
+                            <Input
+                                label="Unit Number *"
+                                name="unitNumber"
+                                value={reminderFormData.unitNumber}
+                                onChange={(e) => setReminderFormData({ ...reminderFormData, unitNumber: e.target.value })}
+                                required
+                            />
+                        </div>
+
+                        <Input
+                            label="Rent Due Date *"
+                            name="dueDate"
+                            value={reminderFormData.dueDate}
+                            onChange={(e) => setReminderFormData({ ...reminderFormData, dueDate: e.target.value })}
+                            required
+                        />
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>
+                                Schedule Event Event
+                            </label>
+                            <select
+                                value={reminderFormData.reminderEvent}
+                                onChange={(e) => setReminderFormData({ ...reminderFormData, reminderEvent: e.target.value })}
+                                style={{ padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.9rem" }}
+                            >
+                                <option value="1ST">1st of Month (Initial Advance Notice)</option>
+                                <option value="7TH">7th of Month (Upcoming Rent Reminder)</option>
+                                <option value="10TH">10th of Month (Due Date Today)</option>
+                                <option value="11TH">11th of Month (Overdue +1 Day)</option>
+                                <option value="12TH">12th of Month (Overdue +2 Days)</option>
+                                <option value="13TH">13th of Month (Overdue +3 Days)</option>
+                                <option value="14TH">14th of Month (Overdue +4 Days)</option>
+                                <option value="15TH">15th of Month (Final Overdue Notice)</option>
+                            </select>
+                        </div>
+
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "12px" }}>
+                            <Button variant="outline" type="button" onClick={() => setReminderDrawerOpen(false)}>
+                                Close
+                            </Button>
+                            <Button variant="primary" type="submit" disabled={reminderSending}>
+                                {reminderSending ? "Dispatching via WhatsApp..." : "💬 Send Rent Reminder"}
                             </Button>
                         </div>
                     </form>
