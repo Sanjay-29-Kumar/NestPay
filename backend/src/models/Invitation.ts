@@ -3,10 +3,10 @@ import { Schema, model, Document, Types } from "mongoose";
 export interface IInvitation extends Document {
     organizationId: Types.ObjectId;
     email: string;
-    role: "OWNER" | "ADMIN" | "TENANT" | "MEMBER";
+    role: "OWNER" | "ADMIN" | "MANAGER" | "ACCOUNTANT" | "STAFF" | "TENANT" | "MEMBER";
     invitedByUserId: Types.ObjectId;
     token: string;
-    status: "PENDING" | "ACCEPTED" | "EXPIRED";
+    status: "PENDING" | "ACCEPTED" | "EXPIRED" | "CANCELLED";
     expiresAt: Date;
     createdAt: Date;
     updatedAt: Date;
@@ -27,7 +27,7 @@ const invitationSchema = new Schema<IInvitation>(
         },
         role: {
             type: String,
-            enum: ["OWNER", "ADMIN", "TENANT", "MEMBER"],
+            enum: ["OWNER", "ADMIN", "MANAGER", "ACCOUNTANT", "STAFF", "TENANT", "MEMBER"],
             required: true,
         },
         invitedByUserId: {
@@ -42,7 +42,7 @@ const invitationSchema = new Schema<IInvitation>(
         },
         status: {
             type: String,
-            enum: ["PENDING", "ACCEPTED", "EXPIRED"],
+            enum: ["PENDING", "ACCEPTED", "EXPIRED", "CANCELLED"],
             default: "PENDING",
         },
         expiresAt: {

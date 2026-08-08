@@ -72,3 +72,26 @@ export async function resendVerificationApi(email: string): Promise<AuthApiRespo
         return { success: false, message: "Failed to resend verification email" };
     }
 }
+
+export async function updateProfileApi(profileData: Record<string, any>): Promise<AuthApiResponse> {
+    try {
+        const response = await api.put<AuthApiResponse>("/auth/me/profile", profileData);
+        return response.data;
+    } catch (error: unknown) {
+        if (error && typeof error === "object" && "response" in error) {
+            const err = error as { response?: { data?: AuthApiResponse } };
+            if (err.response?.data) return err.response.data;
+        }
+        return { success: false, message: "Failed to update profile" };
+    }
+}
+
+export async function getBuildingTenantsApi(orgId?: string): Promise<{ success: boolean; data?: any[]; message?: string }> {
+    try {
+        const response = await api.get(`/auth/building-tenants${orgId ? `?orgId=${orgId}` : ""}`);
+        return response.data;
+    } catch {
+        return { success: false, message: "Failed to fetch building tenants" };
+    }
+}
+

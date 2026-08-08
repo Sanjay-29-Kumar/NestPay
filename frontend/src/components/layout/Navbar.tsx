@@ -6,6 +6,8 @@ import type { RootState } from "@/store";
 import Button from "@/components/ui/Button";
 import api from "@/services/api";
 
+import { OrganizationIcon, NotificationIcon } from "@/components/ui/Icons";
+
 interface NotificationItem {
     _id: string;
     title: string;
@@ -62,12 +64,13 @@ export function Navbar() {
                 position: "sticky",
                 top: 0,
                 zIndex: 40,
+                boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.02)",
             }}
         >
-            <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
                 <Link to="/dashboard" style={{ textDecoration: "none" }}>
-                    <span style={{ fontWeight: 800, fontSize: "1.25rem", color: "#0f172a" }}>
-                        NEST<span style={{ color: "#2563eb" }}>PAY</span>
+                    <span style={{ fontWeight: 800, fontSize: "1.25rem", color: "#0f172a", letterSpacing: "-0.03em" }}>
+                        NEST<span style={{ color: "#4f46e5" }}>PAY</span>
                     </span>
                 </Link>
 
@@ -78,16 +81,16 @@ export function Navbar() {
                             display: "flex",
                             alignItems: "center",
                             gap: "8px",
-                            padding: "6px 12px",
+                            padding: "6px 14px",
                             backgroundColor: "#f8fafc",
-                            border: "1px solid #cbd5e1",
-                            borderRadius: "8px",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "10px",
                             cursor: "pointer",
-                            transition: "all 0.15s ease",
+                            transition: "all 0.15s ease-in-out",
                         }}
                     >
-                        <span style={{ fontSize: "1.1rem" }}>🏢</span>
-                        <span style={{ fontWeight: 700, fontSize: "0.875rem", color: "#0f172a" }}>
+                        <OrganizationIcon size={16} color="#4f46e5" />
+                        <span style={{ fontWeight: 700, fontSize: "0.88rem", color: "#0f172a" }}>
                             {currentOrg.name}
                         </span>
                         {currentRole && (
@@ -95,27 +98,37 @@ export function Navbar() {
                                 style={{
                                     backgroundColor:
                                         currentRole === "OWNER"
-                                            ? "#dbeafe"
+                                            ? "#eef2ff"
                                             : currentRole === "ADMIN"
-                                            ? "#fef3c7"
-                                            : "#dcfce7",
+                                            ? "#fff7ed"
+                                            : "#ecfdf5",
                                     color:
                                         currentRole === "OWNER"
-                                            ? "#1e40af"
+                                            ? "#4338ca"
                                             : currentRole === "ADMIN"
-                                            ? "#92400e"
-                                            : "#166534",
-                                    fontSize: "0.7rem",
+                                            ? "#c2410c"
+                                            : "#047857",
+                                    fontSize: "0.68rem",
                                     fontWeight: 700,
-                                    padding: "2px 6px",
-                                    borderRadius: "10px",
+                                    padding: "2px 8px",
+                                    borderRadius: "12px",
+                                    border: `1px solid ${
+                                        currentRole === "OWNER"
+                                            ? "#c7d2fe"
+                                            : currentRole === "ADMIN"
+                                            ? "#ffedd5"
+                                            : "#a7f3d0"
+                                    }`,
                                     textTransform: "uppercase",
+                                    letterSpacing: "0.02em",
                                 }}
                             >
                                 {currentRole}
                             </span>
                         )}
-                        <span style={{ fontSize: "0.75rem", color: "#64748b" }}>▼</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
                     </div>
                 ) : null}
             </div>
@@ -127,24 +140,30 @@ export function Navbar() {
                     style={{
                         position: "relative",
                         textDecoration: "none",
-                        fontSize: "1.2rem",
-                        color: "#475569",
-                        padding: "6px",
+                        color: "#64748b",
+                        padding: "8px",
+                        borderRadius: "8px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: "#f8fafc",
+                        border: "1px solid #e2e8f0",
                     }}
                 >
-                    🔔
+                    <NotificationIcon size={18} color="#475569" />
                     {unreadCount > 0 && (
                         <span
                             style={{
                                 position: "absolute",
-                                top: "2px",
-                                right: "2px",
-                                backgroundColor: "#dc2626",
+                                top: "-4px",
+                                right: "-4px",
+                                backgroundColor: "#ef4444",
                                 color: "#ffffff",
                                 fontSize: "0.65rem",
                                 fontWeight: 800,
                                 borderRadius: "10px",
-                                padding: "1px 5px",
+                                padding: "2px 6px",
+                                border: "2px solid #ffffff",
                             }}
                         >
                             {unreadCount}

@@ -166,7 +166,7 @@ export async function loginUser(data: LoginUserInput) {
     }
 
     // 2. Verify password match
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = await bcrypt.compare(password, user.password || "");
 
     if (!isPasswordValid) {
         return {
@@ -215,5 +215,140 @@ export async function getMe(userId: string) {
     return {
         success: true,
         data: user,
+    };
+}
+
+export async function updateUserProfile(userId: string, data: Record<string, unknown>) {
+    const user = await User.findById(userId);
+
+    if (!user) {
+        return {
+            success: false,
+            message: "User not found",
+        };
+    }
+
+    // Explicitly prohibit updating email address
+    if (data.email !== undefined && String(data.email).toLowerCase() !== user.email.toLowerCase()) {
+        return {
+            success: false,
+            message: "Email address cannot be changed.",
+        };
+    }
+
+    // 1. Track Name history if fullName or displayName changes
+    const newFullName = data.fullName !== undefined ? String(data.fullName).trim() : undefined;
+    const oldName = user.fullName || user.name;
+
+    if (newFullName && newFullName !== oldName && oldName) {
+        if (!user.previousNames) user.previousNames = [];
+        user.previousNames.push({
+            name: oldName,
+            updatedAt: new Date(),
+        });
+    }
+
+    // 2. Track Phone history if primary phone changes
+    const newPhone = data.phone !== undefined ? String(data.phone).trim() : undefined;
+    const oldPhone = user.phone;
+
+    if (newPhone !== undefined && newPhone !== oldPhone && oldPhone) {
+        if (!user.previousPhones) user.previousPhones = [];
+        user.previousPhones.push({
+            phone: oldPhone,
+            updatedAt: new Date(),
+        });
+    }
+
+    // List of allowed fields to update
+    const allowedFields = [
+        "fullName",
+        "displayName",
+        "photo",
+        "gender",
+        "dateOfBirth",
+        "phone",
+        "alternatePhone",
+        "emergencyContact",
+        "address",
+        "country",
+        "state",
+        "city",
+        "postalCode",
+        "preferredLanguage",
+        "theme",
+        "timezone",
+        "notificationPreferences",
+        "securitySettings",
+    ];
+
+    allowedFields.forEach((field) => {
+        if (data[field] !== undefined) {
+            (user as unknown as Record<string, unknown>)[field] = data[field];
+        }
+    });
+
+    // Calculate Profile Completion %
+    let filledCount = 0;
+    const keyFields = [
+        user.fullName || user.name,
+        user.photo,
+        user.gender && user.gender !== "PREFER_NOT_TO_SAY" ? user.gender : "",
+        user.dateOfBirth,
+        user.phone,
+        user.address,
+        user.city,
+        user.country,
+        user.emergencyContact?.phone,
+        user.preferredLanguage,
+    ];
+
+    keyFields.forEach((val) => {
+        if (val) filledCount++;
+    });
+
+    user.profileCompletionPercentage = Math.round((filledCount / keyFields.length) * 100);
+
+    await user.save();
+
+    const userResponse = user.toObject();
+    delete (userResponse as { password?: string }).password;
+
+    return {
+        success: true,
+        message: "Profile updated successfully.",
+        data: userResponse,
+    };
+}
+
+export async function getBuildingTenants(userId: string, orgId?: string) {
+    const user = await User.findById(userId);
+    if (!user) {
+        return { success: false, message: "User not found" };
+    }
+
+    const Customer = (await import("../../models/Customer.js")).default;
+    const Membership = (await import("../../models/Membership.js")).default;
+
+    // Find memberships for this user or query by orgId
+    let queryOrgId = orgId;
+    if (!queryOrgId) {
+        const userMem = await Membership.findOne({ userId, status: "ACTIVE" });
+        if (userMem) queryOrgId = userMem.organizationId.toString();
+    }
+
+    if (!queryOrgId) {
+        return { success: true, data: [] };
+    }
+
+    const customers = await Customer.find({ organizationId: queryOrgId, status: "ACTIVE" })
+        .populate("propertyId", "name code propertyType")
+        .populate("unitId", "unitNumber floor status")
+        .sort({ name: 1 })
+        .exec();
+
+    return {
+        success: true,
+        data: customers,
     };
 }

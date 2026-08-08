@@ -26,3 +26,13 @@ export async function markAsRead(req: Request, res: Response) {
 
     return res.status(200).json({ success: true, message: "Notification marked as read" });
 }
+
+export async function markAllAsRead(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    await Notification.updateMany({ userId: user.userId, isRead: false }, { isRead: true });
+
+    return res.status(200).json({ success: true, message: "All notifications marked as read" });
+}
+

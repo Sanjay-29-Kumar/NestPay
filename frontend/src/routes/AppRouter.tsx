@@ -30,6 +30,10 @@ import ReportsPage from "@/features/reports/pages/ReportsPage";
 import NotificationsPage from "@/features/notifications/pages/NotificationsPage";
 import DocumentsPage from "@/features/documents/pages/DocumentsPage";
 import OrganizationPage from "@/features/organization/pages/OrganizationPage";
+import MyProfilePage from "@/features/auth/pages/MyProfilePage";
+import MembersPage from "@/features/members/pages/MembersPage";
+import PropertiesPage from "@/features/properties/pages/PropertiesPage";
+import UnitsPage from "@/features/units/pages/UnitsPage";
 import SettingsPage from "@/features/settings/pages/SettingsPage";
 import NotFoundPage from "@/features/errors/pages/NotFoundPage";
 import ProtectedRoute from "./ProtectedRoute";
@@ -135,6 +139,10 @@ function AppRouter() {
                     <Route path="/notifications" element={<NotificationsPage />} />
                     <Route path="/documents" element={<DocumentsPage />} />
                     <Route path="/organization" element={<OrganizationPage />} />
+                    <Route path="/profile" element={<MyProfilePage />} />
+                    <Route path="/members" element={<MembersPage />} />
+                    <Route path="/properties" element={<PropertiesPage />} />
+                    <Route path="/units" element={<UnitsPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                 </Route>
 

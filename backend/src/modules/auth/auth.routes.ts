@@ -1,6 +1,6 @@
 import { Router } from "express";
 import passport from "passport";
-import { register, verifyEmail, resendVerification, login, getProfile, handleGoogleCallback } from "./auth.controller.js";
+import { register, verifyEmail, resendVerification, login, getProfile, updateProfile, handleGoogleCallback, getTenantsDirectory } from "./auth.controller.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import { authenticate } from "../../middleware/authenticate.js";
 import { registerSchema, loginSchema, resendVerificationSchema } from "./auth.validation.js";
@@ -13,6 +13,9 @@ router.post("/verify-email", verifyEmail);
 router.post("/resend-verification", validateRequest(resendVerificationSchema), resendVerification);
 router.post("/login", validateRequest(loginSchema), login);
 router.get("/me", authenticate, getProfile);
+router.put("/me/profile", authenticate, updateProfile);
+router.put("/profile", authenticate, updateProfile);
+router.get("/building-tenants", authenticate, getTenantsDirectory);
 
 // Google OAuth Routes
 router.get(

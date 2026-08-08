@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { registerUser, loginUser, getMe, verifyEmailToken, resendVerificationToken } from "./auth.service.js";
+import { registerUser, loginUser, getMe, updateUserProfile, verifyEmailToken, resendVerificationToken, getBuildingTenants } from "./auth.service.js";
 import { AuthenticatedRequest } from "../../middleware/authenticate.js";
 import { generateToken } from "../../utils/jwt.js";
 
@@ -56,4 +56,27 @@ export async function getProfile(req: Request, res: Response) {
 
     const result = await getMe(user.userId);
     return res.status(result.success ? 200 : 404).json(result);
+}
+
+export async function updateProfile(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+
+    if (!user) {
+        return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const result = await updateUserProfile(user.userId, req.body);
+    return res.status(result.success ? 200 : 400).json(result);
+}
+
+export async function getTenantsDirectory(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+
+    if (!user) {
+        return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const orgId = req.query.orgId as string | undefined;
+    const result = await getBuildingTenants(user.userId, orgId);
+    return res.status(200).json(result);
 }

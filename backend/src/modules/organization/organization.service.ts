@@ -5,7 +5,7 @@ import Invitation from "../../models/Invitation.js";
 import Notification from "../../models/Notification.js";
 import User from "../../models/User.js";
 import { sendInvitationEmail } from "../../utils/mailer.js";
-import { CreateOrganizationInput, InviteUserInput } from "./organization.types.js";
+import { CreateOrganizationInput, UpdateOrganizationInput, InviteUserInput } from "./organization.types.js";
 
 function generateSlug(name: string): string {
     const baseSlug = name
@@ -22,7 +22,12 @@ export async function createOrganization(userId: string, data: CreateOrganizatio
     // 1. Create Organization Document
     const org = await Organization.create({
         name: data.name,
+        displayName: data.name,
         slug,
+        organizationType: data.organizationType || "APARTMENT",
+        currency: data.currency || "USD",
+        timezone: data.timezone || "UTC",
+        language: data.language || "en",
         ownerId: userId,
         status: "ACTIVE",
     });
@@ -42,6 +47,76 @@ export async function createOrganization(userId: string, data: CreateOrganizatio
             organization: org,
             membership,
         },
+    };
+}
+
+export async function getOrganizationById(userId: string, orgId: string) {
+    const membership = await Membership.findOne({
+        userId,
+        organizationId: orgId,
+        status: "ACTIVE",
+    });
+
+    if (!membership) {
+        return {
+            success: false,
+            message: "Unauthorized or membership not found for this organization.",
+        };
+    }
+
+    const org = await Organization.findById(orgId);
+    if (!org) {
+        return {
+            success: false,
+            message: "Organization not found.",
+        };
+    }
+
+    return {
+        success: true,
+        data: {
+            organization: org,
+            role: membership.role,
+        },
+    };
+}
+
+export async function updateOrganization(
+    userId: string,
+    orgId: string,
+    data: UpdateOrganizationInput
+) {
+    const membership = await Membership.findOne({
+        userId,
+        organizationId: orgId,
+        role: { $in: ["OWNER", "ADMIN"] },
+        status: "ACTIVE",
+    });
+
+    if (!membership) {
+        return {
+            success: false,
+            message: "Unauthorized: Only Owners or Admins can update organization profile.",
+        };
+    }
+
+    const updatedOrg = await Organization.findByIdAndUpdate(
+        orgId,
+        { $set: data },
+        { new: true, runValidators: true }
+    );
+
+    if (!updatedOrg) {
+        return {
+            success: false,
+            message: "Organization not found.",
+        };
+    }
+
+    return {
+        success: true,
+        message: "Organization profile updated successfully.",
+        data: updatedOrg,
     };
 }
 
