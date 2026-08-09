@@ -1,9 +1,10 @@
 import dotenv from "dotenv";
+dotenv.config();
+
 import app from "./app.js";
 import connectDB from "./database/connectDB.js";
 import { initReminderCronJob } from "./services/reminderScheduler.js";
 
-dotenv.config();
 
 const PORT = process.env.PORT || 5000;
 

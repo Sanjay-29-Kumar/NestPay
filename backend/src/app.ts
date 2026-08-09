@@ -10,6 +10,7 @@ import unitRoutes from "./modules/units/units.routes.js";
 import customerRoutes from "./modules/customers/customers.routes.js";
 import documentRoutes from "./modules/documents/documents.routes.js";
 import notificationRoutes from "./modules/notification/notification.routes.js";
+import paymentRoutes from "./modules/payments/payments.routes.js";
 
 const app = express();
 
@@ -32,5 +33,7 @@ app.use("/api/v1/organizations/:orgId/units", unitRoutes);
 app.use("/api/v1/organizations/:orgId/customers", customerRoutes);
 app.use("/api/v1/organizations/:orgId/documents", documentRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
+app.use("/api/v1/organizations/:orgId/payments", paymentRoutes);
+app.use("/api/v1/payments", paymentRoutes);
 
 export default app;
