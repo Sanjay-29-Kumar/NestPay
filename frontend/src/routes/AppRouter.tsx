@@ -34,6 +34,7 @@ import MyProfilePage from "@/features/auth/pages/MyProfilePage";
 import MembersPage from "@/features/members/pages/MembersPage";
 import PropertiesPage from "@/features/properties/pages/PropertiesPage";
 import UnitsPage from "@/features/units/pages/UnitsPage";
+import UnitDetailPage from "@/features/units/pages/UnitDetailPage";
 import SettingsPage from "@/features/settings/pages/SettingsPage";
 import NotFoundPage from "@/features/errors/pages/NotFoundPage";
 import ProtectedRoute from "./ProtectedRoute";
@@ -132,6 +133,7 @@ function AppRouter() {
                     <Route path="/create-organization" element={<CreateOrganizationPage />} />
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/customers" element={<CustomersPage />} />
+                    <Route path="/people" element={<CustomersPage />} />
                     <Route path="/invoices" element={<InvoicesPage />} />
                     <Route path="/payments" element={<PaymentsPage />} />
                     <Route path="/expenses" element={<ExpensesPage />} />
@@ -143,6 +145,7 @@ function AppRouter() {
                     <Route path="/members" element={<MembersPage />} />
                     <Route path="/properties" element={<PropertiesPage />} />
                     <Route path="/units" element={<UnitsPage />} />
+                    <Route path="/units/:unitId" element={<UnitDetailPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                 </Route>
 

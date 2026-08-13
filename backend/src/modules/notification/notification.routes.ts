@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUserNotifications, markAsRead, markAllAsRead, sendWhatsAppTestNotification, sendRentReminderNotification, triggerBatchCronReminders } from "./notification.controller.js";
+import { getUserNotifications, markAsRead, markAllAsRead, sendWhatsAppTestNotification, sendRentReminderNotification, triggerBatchCronReminders, sendInAppMessage, getUnitInAppMessages } from "./notification.controller.js";
 import { authenticate } from "../../middleware/authenticate.js";
 
 const router = Router();
@@ -7,6 +7,10 @@ const router = Router();
 router.get("/", authenticate, getUserNotifications);
 router.patch("/read-all", authenticate, markAllAsRead);
 router.patch("/:id/read", authenticate, markAsRead);
+
+// In-App Messenger routes (Unit-wise chat thread)
+router.post("/in-app-message", authenticate, sendInAppMessage);
+router.get("/unit-messages", authenticate, getUnitInAppMessages);
 
 // WhatsApp Cloud API Test Endpoint (Phase 5)
 router.post("/whatsapp/test", authenticate, sendWhatsAppTestNotification);

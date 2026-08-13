@@ -193,6 +193,58 @@ export async function triggerBatchCronReminders(req: Request, res: Response) {
     });
 }
 
+export async function sendInAppMessage(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const { title, message, organizationId, unitId, senderName } = req.body;
+    if (!message) {
+        return res.status(400).json({ success: false, message: "Message content is required." });
+    }
+
+    const User = (await import("../../models/User.js")).default;
+    const senderUser = await User.findById(user.userId);
+
+    const doc = await Notification.create({
+        userId: user.userId,
+        title: title || "In-App Message",
+        message,
+        type: "IN_APP_MESSAGE",
+        organizationId: organizationId || null,
+        unitId: unitId || null,
+        senderName: senderName || senderUser?.name || "User",
+        isRead: true,
+    });
+
+    return res.status(201).json({
+        success: true,
+        message: "Message sent successfully.",
+        data: doc,
+    });
+}
+
+export async function getUnitInAppMessages(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const { unitId, organizationId } = req.query;
+
+    const query: Record<string, any> = { type: "IN_APP_MESSAGE" };
+    if (organizationId) query.organizationId = organizationId;
+    if (unitId) query.unitId = unitId;
+
+    const messages = await Notification.find(query)
+        .sort({ createdAt: 1 })
+        .limit(100)
+        .exec();
+
+    return res.status(200).json({
+        success: true,
+        data: messages,
+    });
+}
+
+
 
 
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import type { RootState } from "@/store";
 import MainLayout from "@/components/layout/MainLayout";
 import Card from "@/components/ui/Card";
@@ -18,8 +19,10 @@ import {
     type UnitStats,
 } from "../services/unitsApi";
 import { getPropertiesApi, type PropertyItem } from "@/features/properties/services/propertiesApi";
+import MessengerDrawer from "@/components/layout/MessengerDrawer";
 
 export function UnitsPage() {
+    const navigate = useNavigate();
     const { activeMembership } = useSelector((state: RootState) => state.organization);
     const orgId = activeMembership?.organizationId?._id;
     const currentUserRole = activeMembership?.role;
@@ -33,27 +36,37 @@ export function UnitsPage() {
     const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
     const [statusFilter, setStatusFilter] = useState<string>("");
 
+    // Messenger state
+    const [messengerOpen, setMessengerOpen] = useState<boolean>(false);
+    const [messengerUnitId, setMessengerUnitId] = useState<string>("");
+
+    // Add / Edit Unit Drawer
     const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
     const [editingUnit, setEditingUnit] = useState<UnitItem | null>(null);
     const [saving, setSaving] = useState<boolean>(false);
     const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+    // Form steps: 1 = Basic Info, 2 = Occupancy Selection, 3 = Occupants
+    const [formStep, setFormStep] = useState<number>(1);
+    const [occupancyType, setOccupancyType] = useState<"SINGLE" | "FAMILY" | "SHARED">("FAMILY");
+
     // Assign User / Tenant Drawer state
     const [assignDrawerOpen, setAssignDrawerOpen] = useState<boolean>(false);
     const [assigningUnit, setAssigningUnit] = useState<UnitItem | null>(null);
-    const [assignFormData, setAssignFormData] = useState({ name: "", email: "", phone: "" });
+    const [assignFormData, setAssignFormData] = useState({ name: "", email: "", phone: "", relationship: "Primary Tenant" });
     const [assigning, setAssigning] = useState<boolean>(false);
 
     const [formData, setFormData] = useState<Record<string, any>>({
         propertyId: "",
         unitNumber: "",
-        unitType: "FLAT",
-        floor: "G",
-        areaSqFt: 500,
+        unitType: "ONE_BHK",
+        floor: "1",
+        areaSqFt: 650,
         bedrooms: 1,
         bathrooms: 1,
-        rentAmount: 1000,
-        depositAmount: 1000,
+        sharingType: "PRIVATE",
+        rentAmount: 12000,
+        depositAmount: 24000,
         status: "VACANT",
     });
 
@@ -92,16 +105,19 @@ export function UnitsPage() {
 
     const handleOpenAdd = () => {
         setEditingUnit(null);
+        setFormStep(1);
+        setOccupancyType("FAMILY");
         setFormData({
             propertyId: selectedPropertyId || (propertiesList.length > 0 ? propertiesList[0]._id : ""),
             unitNumber: "",
-            unitType: "FLAT",
+            unitType: "ONE_BHK",
             floor: "1",
             areaSqFt: 650,
             bedrooms: 1,
             bathrooms: 1,
-            rentAmount: 1200,
-            depositAmount: 1200,
+            sharingType: "PRIVATE",
+            rentAmount: 12000,
+            depositAmount: 24000,
             status: "VACANT",
         });
         setDrawerOpen(true);
@@ -109,6 +125,7 @@ export function UnitsPage() {
 
     const handleOpenEdit = (u: UnitItem) => {
         setEditingUnit(u);
+        setFormStep(1);
         setFormData({
             propertyId: typeof u.propertyId === "object" ? u.propertyId._id : u.propertyId,
             unitNumber: u.unitNumber,
@@ -117,6 +134,7 @@ export function UnitsPage() {
             areaSqFt: u.areaSqFt || 0,
             bedrooms: u.bedrooms || 0,
             bathrooms: u.bathrooms || 0,
+            sharingType: u.sharingType || "PRIVATE",
             rentAmount: u.rentAmount,
             depositAmount: u.depositAmount || 0,
             status: u.status,
@@ -126,7 +144,7 @@ export function UnitsPage() {
 
     const handleOpenAssign = (u: UnitItem) => {
         setAssigningUnit(u);
-        setAssignFormData({ name: "", email: "", phone: "" });
+        setAssignFormData({ name: "", email: "", phone: "", relationship: "Primary Tenant" });
         setAssignDrawerOpen(true);
     };
 
@@ -193,11 +211,10 @@ export function UnitsPage() {
 
     if (!orgId) {
         return (
-            <MainLayout>
-                <Breadcrumbs items={[{ label: "Dashboard", path: "/dashboard" }, { label: "Units" }]} />
+            <MainLayout title="Units Workspace" subtitle="Please select an organization workspace">
                 <EmptyState
                     title="No Active Workspace"
-                    description="Please select an organization workspace to manage units."
+                    description="Please select an organization workspace to manage property units."
                     actionLabel="Select Workspace"
                     onAction={() => (window.location.href = "/select-workspace")}
                 />
@@ -208,26 +225,21 @@ export function UnitsPage() {
     const selectedProp = propertiesList.find((p) => p._id === selectedPropertyId);
 
     return (
-        <MainLayout>
+        <MainLayout title="Units Directory" subtitle="The central hub for property units, occupancy, and rent details">
             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-                {/* Header */}
-                <div>
-                    <Breadcrumbs items={[{ label: "Dashboard", path: "/dashboard" }, { label: "Units" }]} />
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
-                        <div>
-                            <h1 style={{ fontSize: "1.75rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
-                                Workspace Units Master Data
-                            </h1>
-                            <p style={{ color: "#64748b", fontSize: "0.95rem", margin: "4px 0 0 0" }}>
-                                Select property to view and add users to property units.
-                            </p>
-                        </div>
-                        {canManage && (
-                            <Button variant="primary" onClick={handleOpenAdd}>
-                                + Add Unit
-                            </Button>
-                        )}
+                {/* Top Action Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+                    <div>
+                        <Breadcrumbs items={[{ label: "Dashboard", path: "/dashboard" }, { label: "Units" }]} />
+                        <h2 style={{ margin: 0, fontSize: "1.3rem", fontWeight: 800, color: "#0f172a" }}>
+                            Property Units ({stats.totalUnits})
+                        </h2>
                     </div>
+                    {canManage && (
+                        <Button variant="primary" onClick={handleOpenAdd}>
+                            + Add Unit
+                        </Button>
+                    )}
                 </div>
 
                 {feedback && (
@@ -249,28 +261,28 @@ export function UnitsPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
                     <Card>
                         <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600 }}>Total Units</div>
-                        <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#0f172a", marginTop: "4px" }}>{stats.totalUnits}</div>
+                        <div style={{ fontSize: "1.8rem", fontWeight: 900, color: "#0f172a", marginTop: "4px" }}>{stats.totalUnits}</div>
                     </Card>
                     <Card>
                         <div style={{ fontSize: "0.85rem", color: "#2563eb", fontWeight: 600 }}>Occupied Units</div>
-                        <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#2563eb", marginTop: "4px" }}>{stats.occupiedUnits}</div>
+                        <div style={{ fontSize: "1.8rem", fontWeight: 900, color: "#2563eb", marginTop: "4px" }}>{stats.occupiedUnits}</div>
                     </Card>
                     <Card>
                         <div style={{ fontSize: "0.85rem", color: "#16a34a", fontWeight: 600 }}>Vacant Units</div>
-                        <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#16a34a", marginTop: "4px" }}>{stats.vacantUnits}</div>
+                        <div style={{ fontSize: "1.8rem", fontWeight: 900, color: "#16a34a", marginTop: "4px" }}>{stats.vacantUnits}</div>
                     </Card>
                     <Card>
                         <div style={{ fontSize: "0.85rem", color: "#d97706", fontWeight: 600 }}>Maintenance</div>
-                        <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#d97706", marginTop: "4px" }}>{stats.maintenanceUnits}</div>
+                        <div style={{ fontSize: "1.8rem", fontWeight: 900, color: "#d97706", marginTop: "4px" }}>{stats.maintenanceUnits}</div>
                     </Card>
                 </div>
 
-                {/* Filter & Property Selector Bar */}
+                {/* Filters */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", background: "#ffffff", padding: "16px", borderRadius: "12px", border: "1px solid #cbd5e1" }}>
                     <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: "12px", flex: 1, flexWrap: "wrap", alignItems: "center" }}>
                         <div style={{ flex: 1, minWidth: "220px" }}>
                             <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: "4px" }}>
-                                1. Select Property:
+                                Filter Property:
                             </label>
                             <select
                                 value={selectedPropertyId}
@@ -288,7 +300,7 @@ export function UnitsPage() {
 
                         <div style={{ flex: 1, minWidth: "180px" }}>
                             <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: "4px" }}>
-                                Search Unit:
+                                Search Unit #:
                             </label>
                             <input
                                 type="text"
@@ -307,7 +319,7 @@ export function UnitsPage() {
 
                         <div style={{ minWidth: "150px" }}>
                             <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: "4px" }}>
-                                Status Filter:
+                                Status:
                             </label>
                             <select
                                 value={statusFilter}
@@ -318,13 +330,12 @@ export function UnitsPage() {
                                 <option value="VACANT">Vacant</option>
                                 <option value="OCCUPIED">Occupied</option>
                                 <option value="MAINTENANCE">Maintenance</option>
-                                <option value="RESERVED">Reserved</option>
                             </select>
                         </div>
 
                         <div style={{ marginTop: "20px" }}>
                             <Button variant="outline" type="submit">
-                                Filter
+                                Search
                             </Button>
                         </div>
                     </form>
@@ -332,7 +343,7 @@ export function UnitsPage() {
 
                 {selectedProp && (
                     <div style={{ padding: "12px 16px", backgroundColor: "#eef2ff", borderRadius: "8px", border: "1px solid #c7d2fe", color: "#3730a3", fontSize: "0.9rem", fontWeight: 600 }}>
-                        📍 Showing units for <strong>{selectedProp.name}</strong>. Select a unit below to add/assign a user or tenant.
+                        📍 Filtered by <strong>{selectedProp.name}</strong>. Touch any unit card below to enter its workspace.
                     </div>
                 )}
 
@@ -341,32 +352,26 @@ export function UnitsPage() {
                     <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>Loading units...</div>
                 ) : units.length === 0 ? (
                     <EmptyState
-                        title="No Units Found"
-                        description="No units exist matching your selected property filter."
-                        actionLabel={canManage ? "+ Add Unit to this Property" : undefined}
+                        title="No Units Added Yet"
+                        description="No units found. Add your first unit to organize rental tenancies."
+                        actionLabel={canManage ? "+ Add Unit" : undefined}
                         onAction={canManage ? handleOpenAdd : undefined}
                     />
                 ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: "18px" }}>
                         {units.map((u) => {
-                            const statusColor =
-                                u.status === "VACANT"
-                                    ? "#16a34a"
-                                    : u.status === "OCCUPIED"
-                                    ? "#2563eb"
-                                    : u.status === "MAINTENANCE"
-                                    ? "#d97706"
-                                    : "#64748b";
+                            const isOccupied = u.status === "OCCUPIED";
+                            const statusColor = isOccupied ? "#2563eb" : u.status === "VACANT" ? "#16a34a" : "#d97706";
 
                             return (
                                 <Card key={u._id}>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                                             <div>
-                                                <span style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: "4px", backgroundColor: "#f1f5f9", color: "#334155", fontWeight: 700 }}>
-                                                    {u.unitType}
+                                                <span style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: "4px", backgroundColor: "#f1f5f9", color: "#334155", fontWeight: 800 }}>
+                                                    {u.unitType || "1 BHK"}
                                                 </span>
-                                                <h3 style={{ margin: "4px 0 0 0", fontSize: "1.25rem", fontWeight: 800, color: "#0f172a" }}>
+                                                <h3 style={{ margin: "4px 0 0 0", fontSize: "1.35rem", fontWeight: 900, color: "#0f172a" }}>
                                                     Unit {u.unitNumber}
                                                 </h3>
                                                 <span style={{ fontSize: "0.8rem", color: "#64748b" }}>
@@ -376,11 +381,12 @@ export function UnitsPage() {
                                             <span
                                                 style={{
                                                     fontSize: "0.75rem",
-                                                    fontWeight: 700,
-                                                    padding: "4px 8px",
-                                                    borderRadius: "4px",
+                                                    fontWeight: 800,
+                                                    padding: "4px 10px",
+                                                    borderRadius: "12px",
                                                     backgroundColor: `${statusColor}15`,
                                                     color: statusColor,
+                                                    border: `1px solid ${statusColor}40`,
                                                 }}
                                             >
                                                 {u.status}
@@ -388,32 +394,53 @@ export function UnitsPage() {
                                         </div>
 
                                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", color: "#475569", borderTop: "1px solid #f1f5f9", paddingTop: "8px" }}>
-                                            <span>Floor: <strong>{u.floor || "G"}</strong></span>
-                                            <span>Area: <strong>{u.areaSqFt || 0} sq ft</strong></span>
+                                            <span>Sharing: <strong>{u.sharingType || "PRIVATE"}</strong></span>
+                                            <span>Floor: <strong>{u.floor || "1"}</strong></span>
                                         </div>
 
-                                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", color: "#475569" }}>
-                                            <span>Beds: <strong>{u.bedrooms}</strong> | Baths: <strong>{u.bathrooms}</strong></span>
-                                            <strong style={{ color: "#0f172a", fontSize: "0.95rem" }}>
-                                                ${u.rentAmount}/mo
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                            <span style={{ fontSize: "0.82rem", color: "#64748b" }}>Monthly Rent:</span>
+                                            <strong style={{ color: "#0f172a", fontSize: "1.1rem", fontWeight: 900 }}>
+                                                ₹{u.rentAmount.toLocaleString()}
                                             </strong>
                                         </div>
 
-                                        {canManage && (
-                                            <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "6px" }}>
-                                                <Button variant="primary" size="sm" onClick={() => handleOpenAssign(u)}>
-                                                    + Add / Assign User to Unit
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+                                            <div style={{ display: "flex", gap: "6px" }}>
+                                                <Button
+                                                    variant="primary"
+                                                    size="sm"
+                                                    style={{ flex: 1 }}
+                                                    onClick={() => navigate(`/units/${u._id}`)}
+                                                >
+                                                    Open Unit Workspace →
                                                 </Button>
-                                                <div style={{ display: "flex", gap: "8px" }}>
-                                                    <Button variant="outline" size="sm" onClick={() => handleOpenEdit(u)} style={{ flex: 1 }}>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setMessengerUnitId(u._id);
+                                                        setMessengerOpen(true);
+                                                    }}
+                                                >
+                                                    💬 Chat
+                                                </Button>
+                                            </div>
+
+                                            {canManage && (
+                                                <div style={{ display: "flex", gap: "6px" }}>
+                                                    <Button variant="outline" size="sm" onClick={() => handleOpenAssign(u)} style={{ flex: 1 }}>
+                                                        + Assign Occupant
+                                                    </Button>
+                                                    <Button variant="outline" size="sm" onClick={() => handleOpenEdit(u)}>
                                                         Edit
                                                     </Button>
-                                                    <Button variant="outline" size="sm" onClick={() => handleDelete(u._id)} style={{ flex: 1 }}>
+                                                    <Button variant="outline" size="sm" onClick={() => handleDelete(u._id)}>
                                                         Delete
                                                     </Button>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
                                     </div>
                                 </Card>
                             );
@@ -421,141 +448,195 @@ export function UnitsPage() {
                     </div>
                 )}
 
-                {/* Add/Edit Unit Drawer */}
+                {/* Add / Edit Unit Multi-step Drawer */}
                 <Drawer
                     isOpen={drawerOpen}
                     onClose={() => setDrawerOpen(false)}
-                    title={editingUnit ? "Edit Unit" : "Add Unit"}
-                    subtitle="Assign unit to property and set rent details."
+                    title={editingUnit ? "Edit Unit Details" : "Add New Unit"}
+                    subtitle="Configure property unit, room type, and occupancy."
                 >
                     <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>
-                                Property *
-                            </label>
-                            <select
-                                name="propertyId"
-                                value={formData.propertyId}
-                                onChange={handleFormChange}
-                                required
-                                style={{ padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.9rem" }}
+                        {/* Step Tabs Header */}
+                        <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0", marginBottom: "8px" }}>
+                            <button
+                                type="button"
+                                onClick={() => setFormStep(1)}
+                                style={{
+                                    flex: 1,
+                                    padding: "8px",
+                                    border: "none",
+                                    borderBottom: formStep === 1 ? "2px solid #2563eb" : "none",
+                                    fontWeight: formStep === 1 ? 800 : 500,
+                                    color: formStep === 1 ? "#2563eb" : "#64748b",
+                                    background: "transparent",
+                                    cursor: "pointer",
+                                    fontSize: "0.85rem",
+                                }}
                             >
-                                <option value="" disabled>Select Property</option>
-                                {propertiesList.map((p) => (
-                                    <option key={p._id} value={p._id}>
-                                        {p.name} ({p.code})
-                                    </option>
-                                ))}
-                            </select>
+                                1. Unit Details
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFormStep(2)}
+                                style={{
+                                    flex: 1,
+                                    padding: "8px",
+                                    border: "none",
+                                    borderBottom: formStep === 2 ? "2px solid #2563eb" : "none",
+                                    fontWeight: formStep === 2 ? 800 : 500,
+                                    color: formStep === 2 ? "#2563eb" : "#64748b",
+                                    background: "transparent",
+                                    cursor: "pointer",
+                                    fontSize: "0.85rem",
+                                }}
+                            >
+                                2. Occupancy Model
+                            </button>
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                            <Input
-                                label="Unit Number *"
-                                name="unitNumber"
-                                placeholder="e.g. 101, B-4"
-                                value={formData.unitNumber || ""}
-                                onChange={handleFormChange}
-                                required
-                            />
-                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                                <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>Unit Type *</label>
-                                <select
-                                    name="unitType"
-                                    value={formData.unitType || "FLAT"}
-                                    onChange={handleFormChange}
-                                    style={{ padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.9rem" }}
-                                >
-                                    <option value="ONE_RK">1RK (1 Room Kitchen)</option>
-                                    <option value="ONE_BHK">1BHK</option>
-                                    <option value="TWO_BHK">2BHK</option>
-                                    <option value="THREE_BHK">3BHK</option>
-                                    <option value="SHARED_ROOM">Shared Room / Co-living</option>
-                                    <option value="BED_SPACE">Bed Space / PG Seat</option>
-                                    <option value="LINE_UNIT">Line House Unit</option>
-                                    <option value="FLAT">Flat</option>
-                                    <option value="ROOM">Single Room</option>
-                                    <option value="SHOP">Shop</option>
-                                    <option value="OFFICE">Office</option>
-                                    <option value="SUITE">Suite</option>
-                                    <option value="VILLA">Villa</option>
-                                </select>
-                            </div>
-                        </div>
+                        {formStep === 1 ? (
+                            <>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                                    <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>
+                                        Property *
+                                    </label>
+                                    <select
+                                        name="propertyId"
+                                        value={formData.propertyId}
+                                        onChange={handleFormChange}
+                                        required
+                                        style={{ padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.9rem" }}
+                                    >
+                                        <option value="" disabled>Select Property</option>
+                                        {propertiesList.map((p) => (
+                                            <option key={p._id} value={p._id}>
+                                                {p.name} ({p.code})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
-                            <Input
-                                label="Floor"
-                                name="floor"
-                                value={formData.floor || ""}
-                                onChange={handleFormChange}
-                            />
-                            <Input
-                                label="Area (sq ft)"
-                                name="areaSqFt"
-                                type="number"
-                                value={formData.areaSqFt || 0}
-                                onChange={handleFormChange}
-                            />
-                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                                <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>Status</label>
-                                <select
-                                    name="status"
-                                    value={formData.status || "VACANT"}
-                                    onChange={handleFormChange}
-                                    style={{ padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.9rem" }}
-                                >
-                                    <option value="VACANT">Vacant</option>
-                                    <option value="OCCUPIED">Occupied</option>
-                                    <option value="MAINTENANCE">Maintenance</option>
-                                    <option value="RESERVED">Reserved</option>
-                                </select>
-                            </div>
-                        </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                                    <Input
+                                        label="Unit Number *"
+                                        name="unitNumber"
+                                        placeholder="e.g. 101, 102, B-4"
+                                        value={formData.unitNumber || ""}
+                                        onChange={handleFormChange}
+                                        required
+                                    />
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                                        <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>Room Type *</label>
+                                        <select
+                                            name="unitType"
+                                            value={formData.unitType || "ONE_BHK"}
+                                            onChange={handleFormChange}
+                                            style={{ padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.9rem" }}
+                                        >
+                                            <option value="ONE_RK">1 RK</option>
+                                            <option value="ONE_BHK">1 BHK</option>
+                                            <option value="TWO_BHK">2 BHK</option>
+                                            <option value="THREE_BHK">3 BHK</option>
+                                            <option value="SHARED_ROOM">Shared Room</option>
+                                            <option value="BED_SPACE">Bed Space</option>
+                                            <option value="FLAT">Flat</option>
+                                            <option value="ROOM">Single Room</option>
+                                            <option value="SHOP">Shop</option>
+                                            <option value="OFFICE">Office</option>
+                                        </select>
+                                    </div>
+                                </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                            <Input
-                                label="Bedrooms"
-                                name="bedrooms"
-                                type="number"
-                                value={formData.bedrooms || 1}
-                                onChange={handleFormChange}
-                            />
-                            <Input
-                                label="Bathrooms"
-                                name="bathrooms"
-                                type="number"
-                                value={formData.bathrooms || 1}
-                                onChange={handleFormChange}
-                            />
-                        </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                                    <Input
+                                        label="Monthly Rent (₹) *"
+                                        name="rentAmount"
+                                        type="number"
+                                        value={formData.rentAmount || 0}
+                                        onChange={handleFormChange}
+                                        required
+                                    />
+                                    <Input
+                                        label="Security Deposit (₹)"
+                                        name="depositAmount"
+                                        type="number"
+                                        value={formData.depositAmount || 0}
+                                        onChange={handleFormChange}
+                                    />
+                                </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                            <Input
-                                label="Rent Amount ($/mo) *"
-                                name="rentAmount"
-                                type="number"
-                                value={formData.rentAmount || 0}
-                                onChange={handleFormChange}
-                                required
-                            />
-                            <Input
-                                label="Deposit Amount ($)"
-                                name="depositAmount"
-                                type="number"
-                                value={formData.depositAmount || 0}
-                                onChange={handleFormChange}
-                            />
-                        </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                                    <Input
+                                        label="Floor"
+                                        name="floor"
+                                        value={formData.floor || ""}
+                                        onChange={handleFormChange}
+                                    />
+                                    <Input
+                                        label="Area (sq ft)"
+                                        name="areaSqFt"
+                                        type="number"
+                                        value={formData.areaSqFt || 0}
+                                        onChange={handleFormChange}
+                                    />
+                                </div>
 
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "16px" }}>
-                            <Button variant="outline" type="button" onClick={() => setDrawerOpen(false)}>
-                                Cancel
-                            </Button>
-                            <Button variant="primary" type="submit" disabled={saving}>
-                                {saving ? "Saving..." : editingUnit ? "Update Unit" : "Create Unit"}
-                            </Button>
-                        </div>
+                                <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "12px" }}>
+                                    <Button variant="primary" type="button" onClick={() => setFormStep(2)}>
+                                        Next: Occupancy Model →
+                                    </Button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div style={{ padding: "12px", backgroundColor: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                                    <label style={{ fontSize: "0.9rem", fontWeight: 800, color: "#0f172a", display: "block", marginBottom: "8px" }}>
+                                        How is this unit occupied?
+                                    </label>
+
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                        <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "0.9rem" }}>
+                                            <input
+                                                type="radio"
+                                                name="occ"
+                                                checked={occupancyType === "SINGLE"}
+                                                onChange={() => setOccupancyType("SINGLE")}
+                                            />
+                                            <strong>Single Tenant</strong> — One primary tenant relationship.
+                                        </label>
+
+                                        <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "0.9rem" }}>
+                                            <input
+                                                type="radio"
+                                                name="occ"
+                                                checked={occupancyType === "FAMILY"}
+                                                onChange={() => setOccupancyType("FAMILY")}
+                                            />
+                                            <strong>Family</strong> — Primary tenant + family members associated with unit.
+                                        </label>
+
+                                        <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "0.9rem" }}>
+                                            <input
+                                                type="radio"
+                                                name="occ"
+                                                checked={occupancyType === "SHARED"}
+                                                onChange={() => setOccupancyType("SHARED")}
+                                            />
+                                            <strong>Shared</strong> — Multiple co-living tenants sharing rent responsibilities.
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginTop: "16px" }}>
+                                    <Button variant="outline" type="button" onClick={() => setFormStep(1)}>
+                                        ← Back
+                                    </Button>
+                                    <Button variant="primary" type="submit" disabled={saving}>
+                                        {saving ? "Saving..." : editingUnit ? "Update Unit" : "Create Unit"}
+                                    </Button>
+                                </div>
+                            </>
+                        )}
                     </form>
                 </Drawer>
 
@@ -563,19 +644,19 @@ export function UnitsPage() {
                 <Drawer
                     isOpen={assignDrawerOpen}
                     onClose={() => setAssignDrawerOpen(false)}
-                    title={`Add / Assign User to Unit ${assigningUnit?.unitNumber || ""}`}
-                    subtitle={`Assign a tenant or occupant to Unit ${assigningUnit?.unitNumber} in ${typeof assigningUnit?.propertyId === "object" ? assigningUnit.propertyId.name : "the selected property"}`}
+                    title={`Assign Tenant to Unit ${assigningUnit?.unitNumber || ""}`}
+                    subtitle="Add primary tenant or occupant to this unit."
                 >
                     <form onSubmit={handleSaveAssign} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                         <Input
-                            label="User / Tenant Full Name *"
+                            label="Tenant / Person Full Name *"
                             name="name"
                             value={assignFormData.name}
                             onChange={(e) => setAssignFormData({ ...assignFormData, name: e.target.value })}
                             required
                         />
                         <Input
-                            label="User Email Address *"
+                            label="Email Address *"
                             name="email"
                             type="email"
                             value={assignFormData.email}
@@ -583,7 +664,7 @@ export function UnitsPage() {
                             required
                         />
                         <Input
-                            label="Mobile / Phone Number *"
+                            label="Mobile / WhatsApp Number *"
                             name="phone"
                             value={assignFormData.phone}
                             onChange={(e) => setAssignFormData({ ...assignFormData, phone: e.target.value })}
@@ -595,11 +676,18 @@ export function UnitsPage() {
                                 Cancel
                             </Button>
                             <Button variant="primary" type="submit" disabled={assigning}>
-                                {assigning ? "Assigning..." : "Assign User to Unit"}
+                                {assigning ? "Assigning..." : "Assign Occupant to Unit"}
                             </Button>
                         </div>
                     </form>
                 </Drawer>
+
+                {/* In-App Unit Messenger Drawer */}
+                <MessengerDrawer
+                    isOpen={messengerOpen}
+                    onClose={() => setMessengerOpen(false)}
+                    initialUnitId={messengerUnitId}
+                />
             </div>
         </MainLayout>
     );
