@@ -22,8 +22,9 @@ import AcceptInvitePage from "@/features/organization/pages/AcceptInvitePage";
 import SelectWorkspacePage from "@/features/organization/pages/SelectWorkspacePage";
 import CreateOrganizationPage from "@/features/organization/pages/CreateOrganizationPage";
 import DashboardPage from "@/features/dashboard/pages/DashboardPage";
-import CustomersPage from "@/features/customers/pages/CustomersPage";
+import UsersPage from "@/features/users/pages/UsersPage";
 import InvoicesPage from "@/features/invoices/pages/InvoicesPage";
+
 import PaymentsPage from "@/features/payments/pages/PaymentsPage";
 import ExpensesPage from "@/features/expenses/pages/ExpensesPage";
 import ReportsPage from "@/features/reports/pages/ReportsPage";
@@ -132,8 +133,10 @@ function AppRouter() {
                     <Route path="/select-workspace" element={<SelectWorkspacePage />} />
                     <Route path="/create-organization" element={<CreateOrganizationPage />} />
                     <Route path="/dashboard" element={<DashboardPage />} />
-                    <Route path="/customers" element={<CustomersPage />} />
-                    <Route path="/people" element={<CustomersPage />} />
+                    <Route path="/users" element={<UsersPage />} />
+                    <Route path="/customers" element={<UsersPage />} />
+                    <Route path="/people" element={<UsersPage />} />
+
                     <Route path="/invoices" element={<InvoicesPage />} />
                     <Route path="/payments" element={<PaymentsPage />} />
                     <Route path="/expenses" element={<ExpensesPage />} />

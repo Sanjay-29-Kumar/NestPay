@@ -1,250 +1,242 @@
 import { useState } from "react";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
+import { Link, useNavigate } from "react-router-dom";
 import type { RootState } from "@/store";
 import MainLayout from "@/components/layout/MainLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import Input from "@/components/ui/Input";
-import Drawer from "@/components/ui/Drawer";
-import { sendWhatsAppTestApi, triggerCronRemindersApi } from "@/features/notifications/services/notificationsApi";
+import { logout } from "@/features/auth/store/authSlice";
+import api from "@/services/api";
 
-function SettingsPage() {
-    const { user } = useSelector((state: RootState) => state.auth);
-    const { activeMembership } = useSelector((state: RootState) => state.organization);
-    const orgId = activeMembership?.organizationId?._id;
-    const orgName = activeMembership?.organizationId?.name || "Active Workspace";
-    const userRole = activeMembership?.role;
+export function SettingsPage() {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
 
-    const [testDrawerOpen, setTestDrawerOpen] = useState(false);
-    const [recipientNumber, setRecipientNumber] = useState("919677708612");
-    const [testMessage, setTestMessage] = useState("Hello from NestPay! Real-world WhatsApp Business Platform integration test is working.");
-    const [sending, setSending] = useState(false);
-    const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string; messageId?: string } | null>(null);
+  const { user } = useSelector((state: RootState) => state.auth);
+  const { activeMembership } = useSelector((state: RootState) => state.organization);
+  const orgId = activeMembership?.organizationId?._id;
+  const orgName = activeMembership?.organizationId?.name || "Active Workspace";
 
-    // Cron Trigger state
-    const [runningCron, setRunningCron] = useState(false);
-    const [cronResult, setCronResult] = useState<any | null>(null);
 
-    const handleSendTest = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setSending(true);
-        setFeedback(null);
+  // Dark / Light Mode state
+  const [themeMode, setThemeMode] = useState<"light" | "dark">(() => {
+    return (localStorage.getItem("theme_mode") as "light" | "dark") || "light";
+  });
 
-        const res = await sendWhatsAppTestApi({
-            recipientNumber,
-            message: testMessage,
-            organizationId: orgId,
-        });
+  // Mobile & Emergency Contact state
+  const [phone, setPhone] = useState(user?.phone || "");
+  const [emergencyContact, setEmergencyContact] = useState((user as any)?.emergencyContact || "");
+  const [updatingProfile, setUpdatingProfile] = useState(false);
+  const [profileMsg, setProfileMsg] = useState("");
 
-        setSending(false);
+  const toggleTheme = (mode: "light" | "dark") => {
+    setThemeMode(mode);
+    localStorage.setItem("theme_mode", mode);
+    if (mode === "dark") {
+      document.documentElement.classList.add("dark-mode");
+      document.body.style.backgroundColor = "#0f172a";
+      document.body.style.color = "#f8fafc";
+    } else {
+      document.documentElement.classList.remove("dark-mode");
+      document.body.style.backgroundColor = "#f8fafc";
+      document.body.style.color = "#0f172a";
+    }
+  };
 
-        if (res.success) {
-            setFeedback({
-                type: "success",
-                message: res.message || "Message dispatched successfully!",
-                messageId: res.messageId,
-            });
-        } else {
-            setFeedback({
-                type: "error",
-                message: res.message || "Failed to dispatch WhatsApp message.",
-            });
-        }
-    };
+  const handleUpdateContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUpdatingProfile(true);
+    setProfileMsg("");
+    try {
+      await api.put("/auth/me", { phone, emergencyContact });
+      setProfileMsg("Contact details updated successfully across the platform.");
+    } catch (err: any) {
+      setProfileMsg(err.response?.data?.message || "Failed updating contact details.");
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
 
-    const handleTriggerCron = async () => {
-        setRunningCron(true);
-        setCronResult(null);
+  const handleDeleteSelfFromOrg = async () => {
+    if (!orgId) return;
+    if (!confirm(`Are you sure you want to remove yourself from ${orgName}?`)) return;
 
-        const res = await triggerCronRemindersApi();
-        setRunningCron(false);
+    try {
+      await api.delete(`/organizations/${orgId}/members/me`);
+      alert("You have left the organization.");
+      navigate("/select-workspace");
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed removing yourself from organization.");
+    }
+  };
 
-        if (res.success) {
-            setCronResult(res.summary);
-        } else {
-            alert(res.message || "Failed to execute cron job.");
-        }
-    };
+  const handleSignOut = () => {
+    dispatch(logout());
+    navigate("/login");
+  };
 
-    return (
-        <MainLayout>
-            <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-                <div>
-                    <h1 style={{ fontSize: "1.75rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
-                        Organization & Account Settings
-                    </h1>
-                    <p style={{ color: "#64748b", fontSize: "0.95rem", margin: "4px 0 0 0" }}>
-                        Manage integration credentials, automated WhatsApp cron schedules, and security settings.
-                    </p>
-                </div>
+  return (
+    <MainLayout>
+      <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px", maxWidth: "800px" }}>
+        {/* Title */}
+        <div>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 900, color: "#0f172a", margin: 0 }}>
+            Account & Workspace Settings
+          </h1>
+          <p style={{ color: "#64748b", fontSize: "0.95rem", margin: "4px 0 0 0" }}>
+            Manage theme preferences, update contact info, or leave workspace
+          </p>
+        </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "20px" }}>
-                    {/* User Profile */}
-                    <Card title="User Account Details" subtitle="Personal account information">
-                        <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "0.9rem" }}>
-                            <div>
-                                <span style={{ color: "#64748b" }}>User Name: </span>
-                                <strong>{user?.name}</strong>
-                            </div>
-                            <div>
-                                <span style={{ color: "#64748b" }}>Email: </span>
-                                <strong>{user?.email}</strong>
-                            </div>
-                            <div>
-                                <span style={{ color: "#64748b" }}>Role in Workspace: </span>
-                                <span style={{ backgroundColor: "#e0e7ff", color: "#3730a3", fontSize: "0.75rem", fontWeight: 700, padding: "2px 8px", borderRadius: "10px" }}>
-                                    {userRole || "MEMBER"}
-                                </span>
-                            </div>
-                        </div>
-                    </Card>
+        {/* 1. Theme Toggle */}
+        <Card style={{ padding: "24px" }}>
+          <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", marginBottom: "8px" }}>
+            🎨 Appearance Theme
+          </h2>
+          <p style={{ fontSize: "0.85rem", color: "#64748b", marginBottom: "16px" }}>
+            Choose your preferred display mode for NestPay
+          </p>
 
-                    {/* WhatsApp Business Cloud API Settings */}
-                    <Card
-                        title="WhatsApp Business Cloud API Settings"
-                        subtitle={`Organization notification integration for ${orgName}`}
-                    >
-                        <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "0.9rem" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ color: "#64748b" }}>Provider Status:</span>
-                                <span style={{ backgroundColor: "#dcfce7", color: "#15803d", fontSize: "0.75rem", fontWeight: 700, padding: "4px 10px", borderRadius: "12px", border: "1px solid #86efac" }}>
-                                    ● ACTIVE (Meta Cloud API)
-                                </span>
-                            </div>
-                            <div>
-                                <span style={{ color: "#64748b" }}>API Version: </span>
-                                <strong>v22.0 (Official Meta Graph API)</strong>
-                            </div>
-                            <div>
-                                <span style={{ color: "#64748b" }}>Phone Number ID: </span>
-                                <code style={{ backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", fontSize: "0.85rem" }}>1208620762341597</code>
-                            </div>
-                            <div>
-                                <span style={{ color: "#64748b" }}>Business Account ID: </span>
-                                <code style={{ backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", fontSize: "0.85rem" }}>2045554146104477</code>
-                            </div>
+          <div style={{ display: "flex", gap: "16px" }}>
+            <button
+              onClick={() => toggleTheme("light")}
+              style={{
+                padding: "12px 24px",
+                borderRadius: "10px",
+                border: themeMode === "light" ? "2px solid #2563eb" : "1px solid #cbd5e1",
+                backgroundColor: themeMode === "light" ? "#eff6ff" : "#ffffff",
+                color: themeMode === "light" ? "#2563eb" : "#475569",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              ☀️ Light Mode
+            </button>
 
-                            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "12px", marginTop: "4px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                                <Button variant="primary" onClick={() => setTestDrawerOpen(true)}>
-                                    💬 Test WhatsApp Message Dispatch
-                                </Button>
-                                <Button variant="outline" onClick={handleTriggerCron} disabled={runningCron}>
-                                    {runningCron ? "Executing Cron..." : "⚡ Run Daily Cron Reminders Now"}
-                                </Button>
-                            </div>
-                        </div>
-                    </Card>
-                </div>
+            <button
+              onClick={() => toggleTheme("dark")}
+              style={{
+                padding: "12px 24px",
+                borderRadius: "10px",
+                border: themeMode === "dark" ? "2px solid #2563eb" : "1px solid #cbd5e1",
+                backgroundColor: themeMode === "dark" ? "#1e293b" : "#ffffff",
+                color: themeMode === "dark" ? "#60a5fa" : "#475569",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              🌙 Dark Mode
+            </button>
+          </div>
+        </Card>
 
-                {/* Automated Cron Batch Execution Summary */}
-                {cronResult && (
-                    <Card title="Automated WhatsApp Cron Execution Results" subtitle={`Event: ${cronResult.reminderEvent} (Day ${cronResult.dayOfMonth} of month)`}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px" }}>
-                                <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "8px" }}>
-                                    <div style={{ fontSize: "0.75rem", color: "#64748b" }}>Processed</div>
-                                    <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#0f172a" }}>{cronResult.totalProcessed} tenants</div>
-                                </div>
-                                <div style={{ background: "#f0fdf4", padding: "10px", borderRadius: "8px" }}>
-                                    <div style={{ fontSize: "0.75rem", color: "#166534" }}>Dispatched</div>
-                                    <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#16a34a" }}>{cronResult.totalDispatched} messages</div>
-                                </div>
-                                <div style={{ background: "#fef2f2", padding: "10px", borderRadius: "8px" }}>
-                                    <div style={{ fontSize: "0.75rem", color: "#991b1b" }}>Failed</div>
-                                    <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#dc2626" }}>{cronResult.totalFailed}</div>
-                                </div>
-                            </div>
-
-                            {cronResult.details && cronResult.details.length > 0 && (
-                                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "10px", marginTop: "4px" }}>
-                                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.88rem", color: "#334155" }}>Processed Tenants Log:</h4>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                                        {cronResult.details.map((item: any, idx: number) => (
-                                            <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.82rem", padding: "6px 10px", background: "#f8fafc", borderRadius: "6px" }}>
-                                                <div>
-                                                    <strong>{item.tenantName}</strong> ({item.phone})
-                                                </div>
-                                                <span style={{ fontWeight: 700, color: item.status === "DISPATCHED" ? "#16a34a" : "#dc2626" }}>
-                                                    {item.status} {item.messageId ? `(${item.messageId.slice(0, 16)}...)` : item.reason ? `- ${item.reason}` : ""}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </Card>
-                )}
-
-                {/* Test WhatsApp Drawer */}
-                <Drawer
-                    isOpen={testDrawerOpen}
-                    onClose={() => setTestDrawerOpen(false)}
-                    title="Send Test WhatsApp Message"
-                    subtitle="Dispatch a real-world test message using Meta WhatsApp Cloud API."
-                >
-                    <form onSubmit={handleSendTest} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                        {feedback && (
-                            <div
-                                style={{
-                                    padding: "12px 14px",
-                                    borderRadius: "8px",
-                                    fontSize: "0.88rem",
-                                    backgroundColor: feedback.type === "success" ? "#f0fdf4" : "#fef2f2",
-                                    color: feedback.type === "success" ? "#166534" : "#991b1b",
-                                    border: `1px solid ${feedback.type === "success" ? "#bbf7d0" : "#fecaca"}`,
-                                }}
-                            >
-                                <div style={{ fontWeight: 700 }}>{feedback.message}</div>
-                                {feedback.messageId && (
-                                    <div style={{ marginTop: "4px", fontSize: "0.78rem", wordBreak: "break-all" }}>
-                                        Meta Message ID: <code>{feedback.messageId}</code>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <Input
-                            label="Recipient Phone Number (with Country Code) *"
-                            name="recipientNumber"
-                            placeholder="e.g. 919677708612"
-                            value={recipientNumber}
-                            onChange={(e) => setRecipientNumber(e.target.value)}
-                            required
-                        />
-
-                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>
-                                Test Message Body *
-                            </label>
-                            <textarea
-                                rows={4}
-                                value={testMessage}
-                                onChange={(e) => setTestMessage(e.target.value)}
-                                required
-                                style={{
-                                    padding: "10px 12px",
-                                    borderRadius: "6px",
-                                    border: "1px solid #cbd5e1",
-                                    fontSize: "0.9rem",
-                                    fontFamily: "inherit",
-                                }}
-                            />
-                        </div>
-
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "12px" }}>
-                            <Button variant="outline" type="button" onClick={() => setTestDrawerOpen(false)}>
-                                Close
-                            </Button>
-                            <Button variant="primary" type="submit" disabled={sending}>
-                                {sending ? "Dispatching to Meta..." : "Send Test WhatsApp"}
-                            </Button>
-                        </div>
-                    </form>
-                </Drawer>
+        {/* 2. Contact Details & Link to Profile */}
+        <Card style={{ padding: "24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <div>
+              <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                📱 Mobile & Emergency Contact Details
+              </h2>
+              <p style={{ fontSize: "0.85rem", color: "#64748b", margin: "4px 0 0 0" }}>
+                Changes to mobile number or emergency contact propagate everywhere in units and user lists
+              </p>
             </div>
-        </MainLayout>
-    );
+            <Link to="/profile" style={{ fontSize: "0.85rem", fontWeight: 700, color: "#2563eb", textDecoration: "none" }}>
+              View Full Profile →
+            </Link>
+          </div>
+
+          {profileMsg && (
+            <div style={{ padding: "10px 14px", backgroundColor: "#f0fdf4", borderLeft: "4px solid #16a34a", borderRadius: "8px", color: "#166534", fontSize: "0.875rem", marginBottom: "16px" }}>
+              {profileMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleUpdateContact} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+                Mobile Phone Number
+              </label>
+              <input
+                type="text"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+91 9876543210"
+                style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, color: "#334155", marginBottom: '6px' }}>
+                Emergency Contact Number
+              </label>
+              <input
+                type="text"
+                value={emergencyContact}
+                onChange={(e) => setEmergencyContact(e.target.value)}
+                placeholder="+91 9123456789 (Family / Guardian)"
+                style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button type="submit" variant="primary" disabled={updatingProfile}>
+                {updatingProfile ? "Updating..." : "Save Contact Info"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+
+        {/* 3. Delete Self from Organization & Sign Out */}
+        <Card style={{ padding: "24px", border: "1px solid #fecdd3", backgroundColor: "#fff1f2" }}>
+          <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#9f1239", marginBottom: "8px" }}>
+            ⚠️ Danger Zone
+          </h2>
+          <p style={{ fontSize: "0.85rem", color: "#881337", marginBottom: "16px" }}>
+            Manage workspace membership and session sign out
+          </p>
+
+          <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+            <button
+              onClick={handleDeleteSelfFromOrg}
+              style={{
+                padding: "10px 20px",
+                borderRadius: "8px",
+                border: "none",
+                backgroundColor: "#be123c",
+                color: "#ffffff",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Delete Myself from Organization ({orgName})
+            </button>
+
+            <button
+              onClick={handleSignOut}
+              style={{
+                padding: "10px 20px",
+                borderRadius: "8px",
+                border: "1px solid #cbd5e1",
+                backgroundColor: "#ffffff",
+                color: "#1e293b",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Sign Out
+            </button>
+          </div>
+        </Card>
+      </div>
+    </MainLayout>
+  );
 }
 
 export default SettingsPage;

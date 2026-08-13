@@ -32,21 +32,18 @@ const organizationSlice = createSlice({
                 }
             }
 
-            // Default to first membership if available
-            if (action.payload.length > 0) {
-                state.activeMembership = action.payload[0];
-                if (action.payload[0].organizationId?._id) {
-                    localStorage.setItem("active_org_id", action.payload[0].organizationId._id);
-                }
-            } else {
-                state.activeMembership = null;
-            }
+            // Default to null if no valid stored org selection
+            state.activeMembership = null;
         },
         setActiveMembership: (state, action: PayloadAction<Membership>) => {
             state.activeMembership = action.payload;
             if (action.payload.organizationId?._id) {
                 localStorage.setItem("active_org_id", action.payload.organizationId._id);
             }
+        },
+        clearActiveMembership: (state) => {
+            state.activeMembership = null;
+            localStorage.removeItem("active_org_id");
         },
         clearOrganizationState: (state) => {
             state.memberships = [];
@@ -57,5 +54,5 @@ const organizationSlice = createSlice({
     },
 });
 
-export const { setMemberships, setActiveMembership, clearOrganizationState } = organizationSlice.actions;
+export const { setMemberships, setActiveMembership, clearActiveMembership, clearOrganizationState } = organizationSlice.actions;
 export default organizationSlice.reducer;

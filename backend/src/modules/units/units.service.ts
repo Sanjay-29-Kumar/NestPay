@@ -151,7 +151,7 @@ export async function assignUserToUnit(
     userId: string,
     orgId: string,
     unitId: string,
-    tenantData: { name: string; email: string; phone: string }
+    tenantData: { name: string; email: string; phone: string; role?: string }
 ) {
     const membership = await Membership.findOne({
         userId,
@@ -169,9 +169,50 @@ export async function assignUserToUnit(
         return { success: false, message: "Unit not found." };
     }
 
+    const User = (await import("../../models/User.js")).default;
+    const Notification = (await import("../../models/Notification.js")).default;
+    const Organization = (await import("../../models/Organization.js")).default;
     const Customer = (await import("../../models/Customer.js")).default;
-    let customer = await Customer.findOne({ organizationId: orgId, email: tenantData.email.toLowerCase() });
+    const crypto = (await import("crypto")).default;
 
+    const emailClean = tenantData.email.trim().toLowerCase();
+
+    // 1. Find or create tenant User
+    let tenantUser = await User.findOne({ email: emailClean });
+    if (!tenantUser) {
+        const dummyPassword = crypto.randomBytes(16).toString("hex");
+        tenantUser = await User.create({
+            name: tenantData.name,
+            email: emailClean,
+            password: dummyPassword,
+            phone: tenantData.phone,
+            isEmailVerified: true,
+        });
+    }
+
+    // 2. Find or create Organization Membership for tenant
+    const tenantRole = (tenantData.role || "TENANT") as any;
+    let tenantMembership = await Membership.findOne({
+        userId: tenantUser._id,
+        organizationId: orgId,
+    });
+
+    if (tenantMembership) {
+        tenantMembership.status = "ACTIVE";
+        tenantMembership.role = tenantRole;
+        await tenantMembership.save();
+    } else {
+        await Membership.create({
+            userId: tenantUser._id,
+            organizationId: orgId,
+            role: tenantRole,
+            status: "ACTIVE",
+        });
+    }
+
+
+    // 3. Create or update Customer record
+    let customer = await Customer.findOne({ organizationId: orgId, email: emailClean });
     if (customer) {
         customer.propertyId = unit.propertyId;
         customer.unitId = unit._id;
@@ -185,10 +226,27 @@ export async function assignUserToUnit(
             propertyId: unit.propertyId,
             unitId: unit._id,
             name: tenantData.name,
-            email: tenantData.email.toLowerCase(),
+            email: emailClean,
             phone: tenantData.phone,
             status: "ACTIVE",
         });
+    }
+
+    // 4. Send In-App Notification to tenant
+    const org = await Organization.findById(orgId);
+    const orgName = org ? org.name : "Workspace";
+
+    try {
+        await Notification.create({
+            userId: tenantUser._id,
+            title: `Assigned to Unit ${unit.unitNumber}`,
+            message: `You have been added to "${orgName}" as a ${tenantRole} for Unit ${unit.unitNumber}. Click to access your workspace.`,
+            type: "INVITATION",
+            organizationId: orgId,
+            isRead: false,
+        });
+    } catch (notifErr) {
+        console.error("Failed creating tenant assignment notification:", notifErr);
     }
 
     unit.status = "OCCUPIED";
@@ -196,8 +254,9 @@ export async function assignUserToUnit(
 
     return {
         success: true,
-        message: `User ${tenantData.name} assigned to unit ${unit.unitNumber} successfully.`,
-        data: { unit, customer },
+        message: `User ${tenantData.name} assigned to unit ${unit.unitNumber} and added to organization successfully.`,
+        data: { unit, customer, tenantUser },
     };
 }
+
 
