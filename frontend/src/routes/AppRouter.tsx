@@ -18,7 +18,7 @@ import LoginPage from "@/features/auth/pages/LoginPage";
 import RegisterPage from "@/features/auth/pages/RegisterPage";
 import VerifyEmailPage from "@/features/auth/pages/VerifyEmailPage";
 import GoogleCallbackPage from "@/features/auth/pages/GoogleCallbackPage";
-import SelectWorkspacePage from "../features/organization/pages/SelectWorkspacePage";
+import SelectWorkspacePage from "@/features/organization/pages/SelectWorkspacePage";
 import MyProfilePage from "@/features/auth/pages/MyProfilePage";
 import NotFoundPage from "@/features/errors/pages/NotFoundPage";
 import ProtectedRoute from "./ProtectedRoute";
@@ -110,10 +110,11 @@ function AppRouter() {
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
                 <Route path="/auth/callback" element={<GoogleCallbackPage />} />
 
-                {/* Protected Routes - Post-login landing */}
+                {/* Protected Routes - Post-login blank canvas */}
                 <Route element={<ProtectedRoute />}>
                     <Route path="/select-workspace" element={<SelectWorkspacePage />} />
                     <Route path="/dashboard" element={<Navigate to="/select-workspace" replace />} />
+                    <Route path="/create-organization" element={<Navigate to="/select-workspace" replace />} />
                     <Route path="/profile" element={<MyProfilePage />} />
                 </Route>
 
