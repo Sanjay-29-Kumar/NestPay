@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import { getUserMembershipsApi, type Membership } from "../services/organizationApi";
 import { setMemberships, setActiveMembership } from "../store/organizationSlice";
-import MainLayout from "@/components/layout/MainLayout";
+import LandingLayout from "@/components/layout/LandingLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 
@@ -33,7 +33,7 @@ function SelectWorkspacePage() {
     };
 
     return (
-        <MainLayout title="NESTPAY Workspace" subtitle="Please select an organization workspace">
+        <LandingLayout title="NESTPAY Workspace" subtitle="Please select an organization workspace">
             <div style={{ display: "flex", justifyContent: "center", paddingTop: "20px" }}>
                 <Card
                     style={{ width: "100%", maxWidth: "600px", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.08)" }}
@@ -144,7 +144,7 @@ function SelectWorkspacePage() {
                     )}
                 </Card>
             </div>
-        </MainLayout>
+        </LandingLayout>
     );
 }
 

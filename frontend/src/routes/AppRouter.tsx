@@ -18,25 +18,8 @@ import LoginPage from "@/features/auth/pages/LoginPage";
 import RegisterPage from "@/features/auth/pages/RegisterPage";
 import VerifyEmailPage from "@/features/auth/pages/VerifyEmailPage";
 import GoogleCallbackPage from "@/features/auth/pages/GoogleCallbackPage";
-import AcceptInvitePage from "@/features/organization/pages/AcceptInvitePage";
-import SelectWorkspacePage from "@/features/organization/pages/SelectWorkspacePage";
-import CreateOrganizationPage from "@/features/organization/pages/CreateOrganizationPage";
-import DashboardPage from "@/features/dashboard/pages/DashboardPage";
-import UsersPage from "@/features/users/pages/UsersPage";
-import InvoicesPage from "@/features/invoices/pages/InvoicesPage";
-
-import PaymentsPage from "@/features/payments/pages/PaymentsPage";
-import ExpensesPage from "@/features/expenses/pages/ExpensesPage";
-import ReportsPage from "@/features/reports/pages/ReportsPage";
-import NotificationsPage from "@/features/notifications/pages/NotificationsPage";
-import DocumentsPage from "@/features/documents/pages/DocumentsPage";
-import OrganizationPage from "@/features/organization/pages/OrganizationPage";
+import SelectWorkspacePage from "../features/organization/pages/SelectWorkspacePage";
 import MyProfilePage from "@/features/auth/pages/MyProfilePage";
-import MembersPage from "@/features/members/pages/MembersPage";
-import PropertiesPage from "@/features/properties/pages/PropertiesPage";
-import UnitsPage from "@/features/units/pages/UnitsPage";
-import UnitDetailPage from "@/features/units/pages/UnitDetailPage";
-import SettingsPage from "@/features/settings/pages/SettingsPage";
 import NotFoundPage from "@/features/errors/pages/NotFoundPage";
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -88,7 +71,7 @@ function AppRouter() {
                     path="/"
                     element={
                         isAuthenticated ? (
-                            <Navigate to="/dashboard" replace />
+                            <Navigate to="/select-workspace" replace />
                         ) : (
                             <Navigate to="/welcome" replace />
                         )
@@ -98,7 +81,7 @@ function AppRouter() {
                     path="/welcome"
                     element={
                         isAuthenticated ? (
-                            <Navigate to="/dashboard" replace />
+                            <Navigate to="/select-workspace" replace />
                         ) : (
                             <WelcomePage />
                         )
@@ -108,7 +91,7 @@ function AppRouter() {
                     path="/login"
                     element={
                         isAuthenticated ? (
-                            <Navigate to="/dashboard" replace />
+                            <Navigate to="/select-workspace" replace />
                         ) : (
                             <LoginPage />
                         )
@@ -118,7 +101,7 @@ function AppRouter() {
                     path="/register"
                     element={
                         isAuthenticated ? (
-                            <Navigate to="/dashboard" replace />
+                            <Navigate to="/select-workspace" replace />
                         ) : (
                             <RegisterPage />
                         )
@@ -126,30 +109,12 @@ function AppRouter() {
                 />
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
                 <Route path="/auth/callback" element={<GoogleCallbackPage />} />
-                <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
-                {/* Protected Enterprise Routes */}
+                {/* Protected Routes - Post-login landing */}
                 <Route element={<ProtectedRoute />}>
                     <Route path="/select-workspace" element={<SelectWorkspacePage />} />
-                    <Route path="/create-organization" element={<CreateOrganizationPage />} />
-                    <Route path="/dashboard" element={<DashboardPage />} />
-                    <Route path="/users" element={<UsersPage />} />
-                    <Route path="/customers" element={<UsersPage />} />
-                    <Route path="/people" element={<UsersPage />} />
-
-                    <Route path="/invoices" element={<InvoicesPage />} />
-                    <Route path="/payments" element={<PaymentsPage />} />
-                    <Route path="/expenses" element={<ExpensesPage />} />
-                    <Route path="/reports" element={<ReportsPage />} />
-                    <Route path="/notifications" element={<NotificationsPage />} />
-                    <Route path="/documents" element={<DocumentsPage />} />
-                    <Route path="/organization" element={<OrganizationPage />} />
+                    <Route path="/dashboard" element={<Navigate to="/select-workspace" replace />} />
                     <Route path="/profile" element={<MyProfilePage />} />
-                    <Route path="/members" element={<MembersPage />} />
-                    <Route path="/properties" element={<PropertiesPage />} />
-                    <Route path="/units" element={<UnitsPage />} />
-                    <Route path="/units/:unitId" element={<UnitDetailPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
                 </Route>
 
                 {/* Fallback */}
