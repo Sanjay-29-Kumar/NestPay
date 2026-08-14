@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { getCurrentUserApi } from "../services/authApi";
 import { setCredentials, logout } from "../store/authSlice";
+import { clearOrganizationState } from "@/features/organization/store/organizationSlice";
 import Card from "@/components/ui/Card";
 
 function GoogleCallbackPage() {
@@ -29,13 +30,15 @@ function GoogleCallbackPage() {
                 const response = await getCurrentUserApi();
                 if (response.success && response.data) {
                     dispatch(setCredentials({ user: response.data, token }));
-                    navigate("/dashboard");
+                    navigate("/workspace");
                 } else {
                     dispatch(logout());
+                    dispatch(clearOrganizationState());
                     setError("Failed to fetch Google authenticated user profile.");
                 }
             } catch {
                 dispatch(logout());
+                dispatch(clearOrganizationState());
                 setError("Authentication error occurred during Google sign in.");
             }
         }

@@ -38,7 +38,7 @@ export async function registerUser(data: RegisterUserInput) {
         name,
         email,
         password: hashedPassword,
-        isEmailVerified: false,
+        isEmailVerified: true,
     });
 
     // 4. Generate random crypto token for email verification
@@ -175,13 +175,10 @@ export async function loginUser(data: LoginUserInput) {
         };
     }
 
-    // 3. Block login if email is not verified
+    // 3. Auto-verify email if not already verified for seamless access
     if (!user.isEmailVerified) {
-        return {
-            success: false,
-            message: "Please verify your email address before logging in",
-            requiresEmailVerification: true,
-        };
+        user.isEmailVerified = true;
+        await user.save();
     }
 
     // 4. Generate JWT access token

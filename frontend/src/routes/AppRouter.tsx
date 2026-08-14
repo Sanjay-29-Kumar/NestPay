@@ -9,12 +9,15 @@ import {
     logout,
     setInitializationComplete,
 } from "@/features/auth/store/authSlice";
+import { clearOrganizationState } from "@/features/organization/store/organizationSlice";
 
 import SplashScreen from "@/components/common/SplashScreen";
+import LandingPage from "@/features/auth/pages/LandingPage";
 import LoginPage from "@/features/auth/pages/LoginPage";
 import RegisterPage from "@/features/auth/pages/RegisterPage";
 import VerifyEmailPage from "@/features/auth/pages/VerifyEmailPage";
 import GoogleCallbackPage from "@/features/auth/pages/GoogleCallbackPage";
+import WorkspacePage from "@/features/organization/pages/WorkspacePage";
 import DashboardPage from "@/features/dashboard/pages/DashboardPage";
 import NotFoundPage from "@/features/errors/pages/NotFoundPage";
 import ProtectedRoute from "./ProtectedRoute";
@@ -40,9 +43,11 @@ function AppRouter() {
                     dispatch(setAuthenticatedUser(response.data));
                 } else {
                     dispatch(logout());
+                    dispatch(clearOrganizationState());
                 }
             } catch {
                 dispatch(logout());
+                dispatch(clearOrganizationState());
             }
         }
 
@@ -56,14 +61,14 @@ function AppRouter() {
     return (
         <BrowserRouter>
             <Routes>
-                {/* Default Redirect */}
+                {/* Default Route: Landing Page for unauthenticated, /workspace for authenticated */}
                 <Route
                     path="/"
                     element={
                         isAuthenticated ? (
-                            <Navigate to="/dashboard" replace />
+                            <Navigate to="/workspace" replace />
                         ) : (
-                            <Navigate to="/login" replace />
+                            <LandingPage />
                         )
                     }
                 />
@@ -73,7 +78,7 @@ function AppRouter() {
                     path="/login"
                     element={
                         isAuthenticated ? (
-                            <Navigate to="/dashboard" replace />
+                            <Navigate to="/workspace" replace />
                         ) : (
                             <LoginPage />
                         )
@@ -83,7 +88,7 @@ function AppRouter() {
                     path="/register"
                     element={
                         isAuthenticated ? (
-                            <Navigate to="/dashboard" replace />
+                            <Navigate to="/workspace" replace />
                         ) : (
                             <RegisterPage />
                         )
@@ -91,10 +96,13 @@ function AppRouter() {
                 />
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
                 <Route path="/auth/callback" element={<GoogleCallbackPage />} />
+                <Route path="/welcome" element={<Navigate to="/" replace />} />
 
-                {/* Protected Routes - Clean Canvas for custom development */}
+                {/* Protected Routes - Standalone Workspace & Org Dashboard */}
                 <Route element={<ProtectedRoute />}>
-                    <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/workspace" element={<WorkspacePage />} />
+                    <Route path="/org/:orgId/dashboard" element={<DashboardPage />} />
+                    <Route path="/dashboard" element={<Navigate to="/workspace" replace />} />
                 </Route>
 
                 {/* Fallback */}

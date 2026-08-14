@@ -32,7 +32,7 @@ function LoginPage() {
 
         if (result.success && result.token && result.data) {
             dispatch(setCredentials({ user: result.data, token: result.token }));
-            navigate("/dashboard");
+            navigate("/workspace");
         } else {
             if (result.requiresEmailVerification) {
                 setRequiresVerification(true);

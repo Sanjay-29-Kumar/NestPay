@@ -122,7 +122,7 @@ export async function updateOrganization(
 
 export async function getUserMemberships(userId: string) {
     const memberships = await Membership.find({ userId, status: "ACTIVE" })
-        .populate("organizationId", "name slug ownerId status createdAt")
+        .populate("organizationId", "name displayName slug logo description organizationType ownerId status createdAt")
         .exec();
 
     return {
