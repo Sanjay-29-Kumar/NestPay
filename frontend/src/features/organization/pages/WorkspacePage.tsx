@@ -6,11 +6,13 @@ import { logout } from "@/features/auth/store/authSlice";
 import {
     setMemberships,
     setCurrentOrgId,
+    setCurrentUnitId,
     setOrganizationLoading,
     addMembership,
     clearOrganizationState,
 } from "../store/organizationSlice";
 import { getUserMembershipsApi, getNotificationsApi } from "../services/organizationApi";
+import { getUsersGroupedByUnitApi } from "../services/familyRequestsApi";
 import type { Membership, NotificationItem } from "../types/organization.types";
 
 import WorkspaceNavbar from "../components/WorkspaceNavbar";
@@ -25,11 +27,13 @@ import { OrganizationIcon } from "@/components/ui/Icons";
 export const WorkspacePage: React.FC = () => {
     const navigate = useNavigate();
     const dispatch = useDispatch();
+    const { user } = useSelector((state: RootState) => state.auth);
     const { memberships, isLoading } = useSelector((state: RootState) => state.organization);
 
     const [activeTab, setActiveTab] = useState<WorkspaceTab>("organizations");
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+    const [orgUnitsMap, setOrgUnitsMap] = useState<Record<string, any[]>>({});
 
     useEffect(() => {
         loadData();
@@ -44,7 +48,33 @@ export const WorkspacePage: React.FC = () => {
             ]);
 
             if (memRes.status === "fulfilled" && memRes.value?.success) {
-                dispatch(setMemberships(memRes.value.data));
+                const mems = memRes.value.data || [];
+                dispatch(setMemberships(mems));
+
+                // Fetch units for each org to build the nested tree: org -> unit
+                const unitsPromises = mems.map(async (m: any) => {
+                    const orgId = typeof m.organizationId === "object" ? m.organizationId?._id : m.organizationId;
+                    if (!orgId) return { orgId: "", units: [] };
+                    try {
+                        const res = await getUsersGroupedByUnitApi(orgId);
+                        if (res.success && res.data) {
+                            const rawUnits = res.data.units || res.data.unitsWithOccupants || [];
+                            return { orgId, units: rawUnits };
+                        }
+                    } catch {
+                        // ignore error
+                    }
+                    return { orgId, units: [] };
+                });
+
+                const unitsResults = await Promise.all(unitsPromises);
+                const newUnitsMap: Record<string, any[]> = {};
+                unitsResults.forEach((r) => {
+                    if (r.orgId) {
+                        newUnitsMap[r.orgId] = r.units;
+                    }
+                });
+                setOrgUnitsMap(newUnitsMap);
             }
 
             if (notifRes.status === "fulfilled" && notifRes.value?.success) {
@@ -69,6 +99,12 @@ export const WorkspacePage: React.FC = () => {
     const handleSelectOrganization = (orgId: string) => {
         dispatch(setCurrentOrgId(orgId));
         navigate(`/org/${orgId}/dashboard`);
+    };
+
+    const handleSelectOrganizationUnit = (orgId: string, unitId: string) => {
+        dispatch(setCurrentOrgId(orgId));
+        dispatch(setCurrentUnitId(unitId));
+        navigate(`/org/${orgId}/dashboard?unitId=${unitId}`);
     };
 
     const handleOrganizationCreated = (newMembership: Membership) => {
@@ -117,16 +153,16 @@ export const WorkspacePage: React.FC = () => {
                     unreadCount={unreadNotifsCount}
                 />
 
-                {/* Main Content Area - Swaps content in-place without drawer overlays */}
+                {/* Main Content Area */}
                 <main style={{ flex: 1, padding: "40px 32px", overflowY: "auto" }}>
-                    <div style={{ maxWidth: "860px", margin: "0 auto" }}>
+                    <div style={{ maxWidth: "880px", margin: "0 auto" }}>
                         {/* Page Header */}
                         <div style={{ marginBottom: "28px" }}>
                             <h1 style={{ fontSize: "1.85rem", fontWeight: 800, color: "#0f172a", margin: 0, letterSpacing: "-0.02em" }}>
                                 NestPay Workspace
                             </h1>
                             <p style={{ margin: "6px 0 0", fontSize: "1rem", color: "#64748b" }}>
-                                {activeTab === "organizations" && "Please select an organization workspace"}
+                                {activeTab === "organizations" && "Please select an organization workspace or specific unit workspace"}
                                 {activeTab === "profile" && "Your personal profile and account settings"}
                                 {activeTab === "settings" && "Workspace & security configuration"}
                                 {activeTab === "notification" && "System notifications & organization invitations"}
@@ -142,10 +178,9 @@ export const WorkspacePage: React.FC = () => {
                                     border: "1px solid #e2e8f0",
                                     borderRadius: "16px",
                                     padding: "32px",
-                                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -1px rgba(0, 0, 0, 0.02)",
+                                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.04)",
                                 }}
                             >
-                                {/* Single Outer Card Header - NO duplicate button on top right */}
                                 <div
                                     style={{
                                         marginBottom: "24px",
@@ -154,21 +189,18 @@ export const WorkspacePage: React.FC = () => {
                                     }}
                                 >
                                     <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#0f172a", margin: 0 }}>
-                                        Select Workspace
+                                        Select Workspace & Units
                                     </h2>
                                     <p style={{ margin: "4px 0 0", fontSize: "0.875rem", color: "#64748b" }}>
-                                        Choose an organization workspace to manage or view.
+                                        Organizations and your assigned unit workspaces are grouped below.
                                     </p>
                                 </div>
 
-                                {/* Card Data Content State */}
                                 {isLoading ? (
                                     <div style={{ padding: "48px 0", textAlign: "center", color: "#64748b" }}>
-                                        <div style={{ fontSize: "1.8rem", marginBottom: "12px" }}>⏳</div>
-                                        <p style={{ margin: 0, fontSize: "0.95rem" }}>Loading your workspaces...</p>
+                                        <p style={{ margin: 0, fontSize: "0.95rem" }}>Loading your workspaces and unit assignments...</p>
                                     </div>
                                 ) : memberships.length === 0 ? (
-                                    /* State 1: No organizations yet */
                                     <div
                                         style={{
                                             padding: "48px 24px",
@@ -179,40 +211,12 @@ export const WorkspacePage: React.FC = () => {
                                             justifyContent: "center",
                                         }}
                                     >
-                                        <div
-                                            style={{
-                                                width: "72px",
-                                                height: "72px",
-                                                borderRadius: "50%",
-                                                backgroundColor: "#eef2ff",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                fontSize: "2.2rem",
-                                                marginBottom: "20px",
-                                                color: "#4f46e5",
-                                            }}
-                                        >
-                                            🏢
-                                        </div>
-
                                         <h3 style={{ fontSize: "1.3rem", fontWeight: 700, color: "#0f172a", margin: "0 0 8px" }}>
                                             No Organizations Found
                                         </h3>
-
-                                        <p
-                                            style={{
-                                                fontSize: "0.95rem",
-                                                color: "#64748b",
-                                                maxWidth: "440px",
-                                                margin: "0 auto 28px",
-                                                lineHeight: 1.6,
-                                            }}
-                                        >
+                                        <p style={{ fontSize: "0.95rem", color: "#64748b", maxWidth: "440px", margin: "0 auto 28px", lineHeight: 1.6 }}>
                                             You do not belong to any organization yet. Create your first property organization to get started!
                                         </p>
-
-                                        {/* Single Create Organization CTA */}
                                         <Button
                                             variant="primary"
                                             size="lg"
@@ -222,133 +226,157 @@ export const WorkspacePage: React.FC = () => {
                                         </Button>
                                     </div>
                                 ) : (
-                                    /* State 2: Has one or more organizations - Clean Stacked List */
-                                    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                                        <div
-                                            style={{
-                                                display: "flex",
-                                                flexDirection: "column",
-                                                borderRadius: "12px",
-                                                overflow: "hidden",
-                                            }}
-                                        >
-                                            {memberships.map((membership, idx) => {
-                                                const org = typeof membership.organizationId === "object" && membership.organizationId !== null
-                                                    ? membership.organizationId
-                                                    : null;
+                                    /* Nested Tree List: Org -> Units */
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                                        {memberships.map((membership) => {
+                                            const org = typeof membership.organizationId === "object" && membership.organizationId !== null
+                                                ? membership.organizationId
+                                                : null;
 
-                                                if (!org) return null;
+                                            if (!org) return null;
 
-                                                const roleInfo = formatRoleLabel(membership.role);
-                                                const logo = org.logo;
-                                                const isLast = idx === memberships.length - 1;
+                                            const roleInfo = formatRoleLabel(membership.role);
+                                            const isOwner = ["OWNER", "ADMIN", "MANAGER"].includes(membership.role);
+                                            const orgUnits = orgUnitsMap[org._id] || [];
 
-                                                return (
-                                                    <div
-                                                        key={membership._id}
-                                                        onClick={() => handleSelectOrganization(org._id)}
-                                                        style={{
-                                                            padding: "16px 20px",
-                                                            display: "flex",
-                                                            alignItems: "center",
-                                                            justifyContent: "space-between",
-                                                            cursor: "pointer",
-                                                            transition: "all 0.15s ease",
-                                                            borderBottom: isLast ? "none" : "1px solid #f1f5f9",
-                                                            borderRadius: "10px",
-                                                        }}
-                                                        onMouseEnter={(e) => {
-                                                            e.currentTarget.style.backgroundColor = "#f8fafc";
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            e.currentTarget.style.backgroundColor = "transparent";
-                                                        }}
-                                                    >
-                                                        {/* Left: Logo/Icon + Name + Type */}
-                                                        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                                                            {logo ? (
-                                                                <img
-                                                                    src={logo}
-                                                                    alt={org.name}
-                                                                    style={{
-                                                                        width: "44px",
-                                                                        height: "44px",
-                                                                        borderRadius: "10px",
-                                                                        objectFit: "cover",
-                                                                        border: "1px solid #e2e8f0",
-                                                                    }}
-                                                                />
-                                                            ) : (
-                                                                <div
-                                                                    style={{
-                                                                        width: "44px",
-                                                                        height: "44px",
-                                                                        borderRadius: "10px",
-                                                                        backgroundColor: "#eef2ff",
-                                                                        color: "#4f46e5",
-                                                                        display: "flex",
-                                                                        alignItems: "center",
-                                                                        justifyContent: "center",
-                                                                        flexShrink: 0,
-                                                                    }}
-                                                                >
-                                                                    <OrganizationIcon size={22} />
-                                                                </div>
-                                                            )}
+                                            // Filter units for tenants if not owner
+                                            const userEmail = user?.email?.toLowerCase();
+                                            const userPhone = user?.phone;
+                                            const tenantUnits = isOwner
+                                                ? orgUnits
+                                                : orgUnits.filter((uObj: any) => {
+                                                      const occs = uObj.occupants || [];
+                                                      return occs.some((occ: any) => {
+                                                          const e = occ.email?.toLowerCase();
+                                                          const p = occ.phone;
+                                                          return (userEmail && e === userEmail) || (userPhone && p === userPhone);
+                                                      });
+                                                  });
 
-                                                            <div>
-                                                                <h4
-                                                                    style={{
-                                                                        margin: 0,
-                                                                        fontSize: "1.05rem",
-                                                                        fontWeight: 700,
-                                                                        color: "#0f172a",
-                                                                    }}
-                                                                >
-                                                                    {org.name || "Unnamed Organization"}
-                                                                </h4>
-                                                                <p style={{ margin: "2px 0 0", fontSize: "0.825rem", color: "#64748b" }}>
-                                                                    {org.organizationType
-                                                                        ? org.organizationType.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-                                                                        : "Apartment"}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Right: Role Badge + Enter Link */}
-                                                        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-                                                            <span
+                                            return (
+                                                <div
+                                                    key={membership._id}
+                                                    style={{
+                                                        backgroundColor: "#ffffff",
+                                                        border: "1px solid #e2e8f0",
+                                                        borderRadius: "14px",
+                                                        padding: "20px",
+                                                        boxShadow: "0 2px 5px rgba(0,0,0,0.02)",
+                                                    }}
+                                                >
+                                                    {/* Organization Name Header */}
+                                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+                                                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                                            <div
                                                                 style={{
-                                                                    padding: "4px 12px",
-                                                                    borderRadius: "9999px",
-                                                                    fontSize: "0.75rem",
-                                                                    fontWeight: 600,
+                                                                    width: "36px",
+                                                                    height: "36px",
+                                                                    borderRadius: "8px",
                                                                     backgroundColor: roleInfo.bg,
                                                                     color: roleInfo.color,
-                                                                }}
-                                                            >
-                                                                {roleInfo.label}
-                                                            </span>
-
-                                                            <span
-                                                                style={{
-                                                                    fontSize: "0.9rem",
-                                                                    fontWeight: 600,
-                                                                    color: "#4f46e5",
                                                                     display: "flex",
                                                                     alignItems: "center",
-                                                                    gap: "4px",
+                                                                    justifyContent: "center",
+                                                                    flexShrink: 0,
                                                                 }}
                                                             >
-                                                                Enter &rarr;
-                                                            </span>
+                                                                <OrganizationIcon size={18} />
+                                                            </div>
+                                                            <h3 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 800, color: "#0f172a" }}>
+                                                                {org.name || "Unnamed Organization"}
+                                                            </h3>
                                                         </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
 
-                                        {/* SINGLE Create Organization link below the list */}
+                                                        {isOwner && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSelectOrganization(org._id)}
+                                                                style={{
+                                                                    background: "none",
+                                                                    border: "none",
+                                                                    color: "#4f46e5",
+                                                                    fontWeight: 700,
+                                                                    fontSize: "0.85rem",
+                                                                    cursor: "pointer",
+                                                                }}
+                                                            >
+                                                                Property Dashboard →
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Nested Units List */}
+                                                    {tenantUnits.length > 0 && (
+                                                        <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingLeft: "8px" }}>
+                                                            {tenantUnits.map((uObj: any) => {
+                                                                const u = uObj.unit || uObj;
+                                                                const uId = String(u._id || u.id);
+                                                                const uNum = u.unitNumber || "101";
+                                                                const uName = u.unitName || u.name || "";
+
+                                                                // Find user's role in this unit
+                                                                const occs = uObj.occupants || [];
+                                                                const myOcc = occs.find((occ: any) => {
+                                                                    const e = occ.email?.toLowerCase();
+                                                                    const p = occ.phone;
+                                                                    return (userEmail && e === userEmail) || (userPhone && p === userPhone);
+                                                                });
+                                                                const unitRoleLabel = myOcc?.occupancyRole || (isOwner ? "Owner / Admin" : u.occupancyType || "Tenant");
+
+                                                                return (
+                                                                    <div
+                                                                        key={uId}
+                                                                        onClick={() => handleSelectOrganizationUnit(org._id, uId)}
+                                                                        style={{
+                                                                            padding: "14px 18px",
+                                                                            backgroundColor: "#f8fafc",
+                                                                            border: "1px solid #e2e8f0",
+                                                                            borderRadius: "10px",
+                                                                            display: "flex",
+                                                                            alignItems: "center",
+                                                                            justifyContent: "space-between",
+                                                                            cursor: "pointer",
+                                                                            transition: "all 0.15s ease",
+                                                                        }}
+                                                                        onMouseEnter={(ev) => {
+                                                                            ev.currentTarget.style.backgroundColor = "#eef2ff";
+                                                                            ev.currentTarget.style.borderColor = "#c7d2fe";
+                                                                        }}
+                                                                        onMouseLeave={(ev) => {
+                                                                            ev.currentTarget.style.backgroundColor = "#f8fafc";
+                                                                            ev.currentTarget.style.borderColor = "#e2e8f0";
+                                                                        }}
+                                                                    >
+                                                                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                                                            <div style={{ fontWeight: 800, fontSize: "1rem", color: "#0f172a" }}>
+                                                                                Unit {uNum} {uName ? `(${uName})` : ""}
+                                                                            </div>
+                                                                            <div style={{ fontSize: "0.775rem", color: "#64748b" }}>
+                                                                                {org.name || "Organization"}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <span
+                                                                            style={{
+                                                                                fontSize: "0.775rem",
+                                                                                fontWeight: 700,
+                                                                                backgroundColor: isOwner ? "#e0e7ff" : "#dcfce7",
+                                                                                color: isOwner ? "#3730a3" : "#166534",
+                                                                                padding: "4px 14px",
+                                                                                borderRadius: "9999px",
+                                                                            }}
+                                                                        >
+                                                                            {unitRoleLabel}
+                                                                        </span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+
                                         <div
                                             style={{
                                                 paddingTop: "16px",
@@ -372,10 +400,7 @@ export const WorkspacePage: React.FC = () => {
                                                     gap: "6px",
                                                     padding: "8px 16px",
                                                     borderRadius: "8px",
-                                                    transition: "all 0.15s ease",
                                                 }}
-                                                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#eef2ff")}
-                                                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                                             >
                                                 + Create Organization
                                             </button>
@@ -385,13 +410,8 @@ export const WorkspacePage: React.FC = () => {
                             </div>
                         )}
 
-                        {/* TAB 2: Profile (In-Place View) */}
                         {activeTab === "profile" && <ProfileView />}
-
-                        {/* TAB 3: Settings (In-Place View) */}
                         {activeTab === "settings" && <SettingsView />}
-
-                        {/* TAB 4: Notifications (In-Place View) */}
                         {activeTab === "notification" && (
                             <NotificationView onInviteAccepted={loadData} />
                         )}
@@ -399,7 +419,6 @@ export const WorkspacePage: React.FC = () => {
                 </main>
             </div>
 
-            {/* Create Organization Modal Dialog */}
             <CreateOrganizationModal
                 isOpen={isCreateModalOpen}
                 onClose={() => setIsCreateModalOpen(false)}

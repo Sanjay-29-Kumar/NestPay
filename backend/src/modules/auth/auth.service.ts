@@ -36,10 +36,68 @@ export async function registerUser(data: RegisterUserInput) {
     // 3. Create user with hashed password
     const user = await User.create({
         name,
-        email,
+        email: email.toLowerCase(),
         password: hashedPassword,
         isEmailVerified: true,
     });
+
+    // Auto-link any pending Customer & Invitation documents for this email
+    const Customer = (await import("../../models/Customer.js")).default;
+    const Membership = (await import("../../models/Membership.js")).default;
+    const Invitation = (await import("../../models/Invitation.js")).default;
+    const Notification = (await import("../../models/Notification.js")).default;
+
+    const lowerEmail = email.toLowerCase();
+    const pendingCustomers = await Customer.find({ email: lowerEmail });
+
+    for (const cust of pendingCustomers) {
+        cust.userId = user._id;
+        cust.status = "ACTIVE";
+        await cust.save();
+
+        const existingMem = await Membership.findOne({
+            userId: user._id,
+            organizationId: cust.organizationId,
+        });
+
+        if (!existingMem) {
+            await Membership.create({
+                userId: user._id,
+                organizationId: cust.organizationId,
+                role: "MEMBER",
+                status: "ACTIVE",
+            });
+        }
+
+        await Notification.create({
+            userId: user._id,
+            title: "Added to Unit",
+            message: `Welcome to NestPay! You have been assigned to your unit as a Family Member.`,
+            type: "SYSTEM",
+            organizationId: cust.organizationId,
+            unitId: cust.unitId,
+        });
+    }
+
+    const pendingInvitations = await Invitation.find({ email: lowerEmail });
+    for (const inv of pendingInvitations) {
+        inv.status = "ACCEPTED";
+        await inv.save();
+
+        const existingMem = await Membership.findOne({
+            userId: user._id,
+            organizationId: inv.organizationId,
+        });
+
+        if (!existingMem) {
+            await Membership.create({
+                userId: user._id,
+                organizationId: inv.organizationId,
+                role: inv.role || "MEMBER",
+                status: "ACTIVE",
+            });
+        }
+    }
 
     // 4. Generate random crypto token for email verification
     const rawToken = crypto.randomBytes(32).toString("hex");

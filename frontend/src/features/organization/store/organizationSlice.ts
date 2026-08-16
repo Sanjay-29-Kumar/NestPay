@@ -4,6 +4,7 @@ import type { Membership } from "../types/organization.types";
 interface OrganizationState {
     memberships: Membership[];
     currentOrgId: string | null;
+    currentUnitId: string | null;
     isLoading: boolean;
     error: string | null;
 }
@@ -11,6 +12,7 @@ interface OrganizationState {
 const initialState: OrganizationState = {
     memberships: [],
     currentOrgId: localStorage.getItem("selectedOrgId"),
+    currentUnitId: localStorage.getItem("selectedUnitId"),
     isLoading: false,
     error: null,
 };
@@ -32,6 +34,14 @@ const organizationSlice = createSlice({
                 localStorage.removeItem("selectedOrgId");
             }
         },
+        setCurrentUnitId: (state, action: PayloadAction<string | null>) => {
+            state.currentUnitId = action.payload;
+            if (action.payload) {
+                localStorage.setItem("selectedUnitId", action.payload);
+            } else {
+                localStorage.removeItem("selectedUnitId");
+            }
+        },
         addMembership: (state, action: PayloadAction<Membership>) => {
             state.memberships.unshift(action.payload);
         },
@@ -45,9 +55,11 @@ const organizationSlice = createSlice({
         clearOrganizationState: (state) => {
             state.memberships = [];
             state.currentOrgId = null;
+            state.currentUnitId = null;
             state.isLoading = false;
             state.error = null;
             localStorage.removeItem("selectedOrgId");
+            localStorage.removeItem("selectedUnitId");
         },
     },
 });
@@ -55,6 +67,7 @@ const organizationSlice = createSlice({
 export const {
     setMemberships,
     setCurrentOrgId,
+    setCurrentUnitId,
     addMembership,
     setOrganizationLoading,
     setOrganizationError,

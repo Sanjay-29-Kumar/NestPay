@@ -22,25 +22,46 @@ export async function createUnit(
         };
     }
 
-    const propertyExists = await Property.findOne({ _id: data.propertyId, organizationId: orgId });
-    if (!propertyExists) {
-        return { success: false, message: "Associated property not found in this organization." };
+    // Auto-resolve propertyId if not provided or if property doesn't exist
+    let propertyId = data.propertyId;
+    if (propertyId) {
+        const prop = await Property.findOne({ _id: propertyId, organizationId: orgId });
+        if (!prop) propertyId = undefined;
+    }
+
+    if (!propertyId) {
+        let defaultProp = await Property.findOne({ organizationId: orgId });
+        if (!defaultProp) {
+            const Organization = (await import("../../models/Organization.js")).default;
+            const org = await Organization.findById(orgId);
+            const orgName = org ? org.name : "Main Workspace";
+            defaultProp = await Property.create({
+                organizationId: orgId,
+                name: `${orgName} Building`,
+                code: "MAIN",
+                propertyType: "APARTMENT",
+                status: "ACTIVE",
+            });
+        }
+        propertyId = defaultProp._id.toString();
     }
 
     const existingUnit = await Unit.findOne({
-        propertyId: data.propertyId,
-        unitNumber: data.unitNumber,
+        organizationId: orgId,
+        propertyId,
+        unitNumber: data.unitNumber.trim(),
     });
 
     if (existingUnit) {
         return {
             success: false,
-            message: `Unit "${data.unitNumber}" already exists for this property.`,
+            message: `Unit "${data.unitNumber}" already exists in this organization.`,
         };
     }
 
     const unit = await Unit.create({
         ...data,
+        propertyId,
         organizationId: orgId,
         status: "VACANT",
     });
@@ -50,6 +71,25 @@ export async function createUnit(
         message: "Unit created successfully.",
         data: unit,
     };
+}
+
+export async function getSingleUnit(userId: string, orgId: string, unitId: string) {
+    const membership = await Membership.findOne({
+        userId,
+        organizationId: orgId,
+        status: "ACTIVE",
+    });
+
+    if (!membership) {
+        return { success: false, message: "Unauthorized." };
+    }
+
+    const unit = await Unit.findOne({ _id: unitId, organizationId: orgId }).populate("propertyId", "name code");
+    if (!unit) {
+        return { success: false, message: "Unit not found." };
+    }
+
+    return { success: true, data: unit };
 }
 
 export async function getUnits(
@@ -118,6 +158,14 @@ export async function updateUnit(
         return { success: false, message: "Unauthorized to update units." };
     }
 
+    const existingUnit = await Unit.findOne({ _id: unitId, organizationId: orgId });
+    if (!existingUnit) {
+        return { success: false, message: "Unit not found." };
+    }
+
+    const previousOccupancyType = existingUnit.occupancyType;
+    const newOccupancyType = data.occupancyType;
+
     const updated = await Unit.findOneAndUpdate(
         { _id: unitId, organizationId: orgId },
         { $set: data },
@@ -126,6 +174,33 @@ export async function updateUnit(
 
     if (!updated) {
         return { success: false, message: "Unit not found." };
+    }
+
+    // Sync tenant occupancyRole live when occupancyType changes
+    if (newOccupancyType && previousOccupancyType !== newOccupancyType) {
+        const Customer = (await import("../../models/Customer.js")).default;
+        const activeCustomers = await Customer.find({
+            organizationId: orgId,
+            unitId: unitId,
+            status: "ACTIVE",
+        }).sort({ createdAt: 1 });
+
+        if (activeCustomers.length > 0) {
+            if (newOccupancyType === "Family") {
+                const primary = activeCustomers[0];
+                primary.occupancyRole = "Family Head";
+                await primary.save();
+            } else if (newOccupancyType === "Single") {
+                const primary = activeCustomers[0];
+                primary.occupancyRole = "Single";
+                await primary.save();
+            } else if (newOccupancyType === "Sharing") {
+                for (const cust of activeCustomers) {
+                    cust.occupancyRole = "Sharing";
+                    await cust.save();
+                }
+            }
+        }
     }
 
     return { success: true, message: "Unit updated successfully.", data: updated };
@@ -256,6 +331,61 @@ export async function assignUserToUnit(
         success: true,
         message: `User ${tenantData.name} assigned to unit ${unit.unitNumber} and added to organization successfully.`,
         data: { unit, customer, tenantUser },
+    };
+}
+
+export async function removeUserFromUnit(
+    userId: string,
+    orgId: string,
+    unitId: string,
+    targetUserIdentifier: string
+) {
+    const membership = await Membership.findOne({
+        userId,
+        organizationId: orgId,
+        role: { $in: ["OWNER", "ADMIN", "MANAGER"] },
+        status: "ACTIVE",
+    });
+
+    if (!membership) {
+        return { success: false, message: "Unauthorized to remove user from unit." };
+    }
+
+    const unit = await Unit.findOne({ _id: unitId, organizationId: orgId });
+    if (!unit) {
+        return { success: false, message: "Unit not found." };
+    }
+
+    const Customer = (await import("../../models/Customer.js")).default;
+    const User = (await import("../../models/User.js")).default;
+
+    const targetClean = targetUserIdentifier.trim().toLowerCase();
+    const targetUser = await User.findOne({
+        $or: [{ _id: targetUserIdentifier }, { email: targetClean }]
+    });
+
+    const targetEmail = targetUser ? targetUser.email.toLowerCase() : targetClean;
+
+    await Customer.deleteMany({
+        organizationId: orgId,
+        unitId: unitId,
+        $or: [{ email: targetEmail }, { _id: targetUserIdentifier }]
+    });
+
+    const remainingCustomers = await Customer.countDocuments({
+        organizationId: orgId,
+        unitId: unitId,
+        status: "ACTIVE"
+    });
+
+    if (remainingCustomers === 0) {
+        unit.status = "VACANT";
+        await unit.save();
+    }
+
+    return {
+        success: true,
+        message: "Occupant removed from unit successfully.",
     };
 }
 

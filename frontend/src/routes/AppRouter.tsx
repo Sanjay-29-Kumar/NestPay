@@ -102,6 +102,13 @@ function AppRouter() {
                 <Route element={<ProtectedRoute />}>
                     <Route path="/workspace" element={<WorkspacePage />} />
                     <Route path="/org/:orgId/dashboard" element={<DashboardPage />} />
+                    <Route path="/org/:orgId/payment" element={<DashboardPage initialTab="payment" />} />
+                    <Route path="/org/:orgId/payments" element={<DashboardPage initialTab="payment" />} />
+                    <Route path="/org/:orgId/units" element={<DashboardPage initialTab="units" unitSubView="list" />} />
+                    <Route path="/org/:orgId/units/new" element={<DashboardPage initialTab="units" unitSubView="new" />} />
+                    <Route path="/org/:orgId/units/:unitId" element={<DashboardPage initialTab="units" unitSubView="details" />} />
+                    <Route path="/org/:orgId/units/:unitId/edit" element={<DashboardPage initialTab="units" unitSubView="edit" />} />
+                    <Route path="/org/:orgId/units/:unitId/add-user" element={<DashboardPage initialTab="units" unitSubView="add-user" />} />
                     <Route path="/dashboard" element={<Navigate to="/workspace" replace />} />
                 </Route>
 

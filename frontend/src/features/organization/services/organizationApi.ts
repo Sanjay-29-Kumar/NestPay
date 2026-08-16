@@ -37,3 +37,13 @@ export async function acceptInvitationApi(token: string) {
     const response = await api.post<{ success: boolean; message: string }>("/organizations/invitations/accept", { token });
     return response.data;
 }
+
+export async function getOrganizationApi(orgId: string) {
+    const response = await api.get<{ success: boolean; data: { organization: any; role: string } }>(`/organizations/${orgId}`);
+    return response.data;
+}
+
+export async function updateOrganizationApi(orgId: string, data: any) {
+    const response = await api.put<{ success: boolean; message: string; data: any }>(`/organizations/${orgId}`, data);
+    return response.data;
+}

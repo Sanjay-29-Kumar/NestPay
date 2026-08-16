@@ -16,17 +16,25 @@ export type UnitTypeEnum =
     | "LINE_UNIT";
 
 export interface CreateUnitInput {
-    propertyId: string;
+    propertyId?: string;
     unitNumber: string;
-    unitType: UnitTypeEnum;
+    blockWing?: string;
+    roomType?: string;
+    unitType?: string;
     floor?: string;
     areaSqFt?: number;
     bedrooms?: number;
     bathrooms?: number;
     maxCapacity?: number;
     sharingType?: "PRIVATE" | "DOUBLE_SHARING" | "TRIPLE_SHARING" | "MULTI_SHARING";
-    rentAmount: number;
+    occupancyType?: "Single" | "Family" | "Sharing";
+    rentAmount?: number;
     depositAmount?: number;
+    maintenanceCharge?: number;
+    furnishingStatus?: "Unfurnished" | "Semi-Furnished" | "Fully Furnished";
+    amenities?: string[];
+    photos?: string[];
+    notes?: string;
 }
 
 export interface UpdateUnitInput extends Partial<CreateUnitInput> {

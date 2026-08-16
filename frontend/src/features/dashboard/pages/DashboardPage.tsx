@@ -7,7 +7,7 @@ import {
     setCurrentOrgId,
     setOrganizationLoading,
 } from "@/features/organization/store/organizationSlice";
-import { getUserMembershipsApi } from "@/features/organization/services/organizationApi";
+import { getUserMembershipsApi, getNotificationsApi } from "@/features/organization/services/organizationApi";
 import {
     OrganizationIcon,
     UnitIcon,
@@ -20,6 +20,14 @@ import {
     ProfileIcon,
     LogoutIcon,
 } from "@/components/ui/Icons";
+import { getUnitsApi } from "@/features/units/services/unitsApi";
+import UnitsList from "@/features/units/components/UnitsList";
+import AddUnitPage from "@/features/units/components/AddUnitPage";
+import EditUnitPage from "@/features/units/components/EditUnitPage";
+import AddUserToUnitPage from "@/features/units/components/AddUserToUnitPage";
+import UnitDetailPage from "@/features/units/components/UnitDetailPage";
+import UsersSection from "@/features/organization/components/UsersSection";
+import PaymentsSection from "@/features/organization/components/PaymentsSection";
 
 export type DashboardTab =
     | "organization"
@@ -32,16 +40,39 @@ export type DashboardTab =
     | "chat"
     | "profile";
 
-export const DashboardPage: React.FC = () => {
-    const { orgId } = useParams<{ orgId: string }>();
+interface DashboardPageProps {
+    initialTab?: DashboardTab;
+    unitSubView?: "list" | "new" | "details" | "edit" | "add-user";
+}
+
+export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSubView }) => {
+    const { orgId, unitId } = useParams<{ orgId: string; unitId?: string }>();
     const navigate = useNavigate();
     const dispatch = useDispatch();
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [searchParams] = useSearchParams();
 
     const { user } = useSelector((state: RootState) => state.auth);
-    const { memberships, isLoading } = useSelector((state: RootState) => state.organization);
+    const { memberships, currentUnitId, isLoading } = useSelector((state: RootState) => state.organization);
+    const activeUnitParam = searchParams.get("unitId") || unitId || currentUnitId;
+    const [activeUnitNumber, setActiveUnitNumber] = useState<string | null>(null);
 
-    const currentTabFromUrl = (searchParams.get("tab") as DashboardTab) || "organization";
+    useEffect(() => {
+        if (orgId) {
+            getUnitsApi(orgId).then((res) => {
+                if (res.success && res.data?.units) {
+                    const unitsList = res.data.units;
+                    const match = unitsList.find((u: any) => String(u._id || u.id) === String(activeUnitParam));
+                    if (match) {
+                        setActiveUnitNumber(match.unitNumber);
+                    } else if (unitsList.length > 0) {
+                        setActiveUnitNumber(unitsList[0].unitNumber);
+                    }
+                }
+            });
+        }
+    }, [orgId, activeUnitParam]);
+
+    const currentTabFromUrl = initialTab || (searchParams.get("tab") as DashboardTab) || "organization";
     const [activeTab, setActiveTab] = useState<DashboardTab>(currentTabFromUrl);
 
     useEffect(() => {
@@ -55,11 +86,39 @@ export const DashboardPage: React.FC = () => {
     }, [orgId, memberships.length, dispatch]);
 
     useEffect(() => {
-        const tab = searchParams.get("tab") as DashboardTab;
-        if (tab) {
-            setActiveTab(tab);
+        if (initialTab) {
+            setActiveTab(initialTab);
+        } else {
+            const tab = searchParams.get("tab") as DashboardTab;
+            if (tab) {
+                setActiveTab(tab);
+            }
         }
-    }, [searchParams]);
+    }, [searchParams, initialTab]);
+
+    const [notificationsList, setNotificationsList] = useState<any[]>([]);
+    const [unreadCount, setUnreadCount] = useState<number>(0);
+
+    const loadNotifications = async () => {
+        try {
+            const res = await getNotificationsApi();
+            if (res.success && res.data) {
+                setNotificationsList(res.data);
+                const unread = res.data.filter((n: any) => !n.isRead).length;
+                setUnreadCount(unread);
+            }
+        } catch {
+            // handle error silently
+        }
+    };
+
+    useEffect(() => {
+        loadNotifications();
+        const interval = setInterval(() => {
+            loadNotifications();
+        }, 8000);
+        return () => clearInterval(interval);
+    }, []);
 
     const loadMemberships = async () => {
         dispatch(setOrganizationLoading(true));
@@ -77,7 +136,13 @@ export const DashboardPage: React.FC = () => {
 
     const handleSelectTab = (tab: DashboardTab) => {
         setActiveTab(tab);
-        setSearchParams({ tab });
+        if (tab === "units") {
+            navigate(`/org/${orgId}/units`);
+        } else if (tab === "payment") {
+            navigate(`/org/${orgId}/payment`);
+        } else {
+            navigate(`/org/${orgId}/dashboard?tab=${tab}`);
+        }
     };
 
     // Find current active organization & membership
@@ -92,6 +157,7 @@ export const DashboardPage: React.FC = () => {
 
     const orgName = activeOrg?.name || "Organization Workspace";
     const userRole = activeMembership?.role || "MEMBER";
+    const isOwnerOrAdmin = ["OWNER", "ADMIN", "MANAGER"].includes(userRole);
 
     // Helper for formatting roles
     const formatRoleInfo = (role: string) => {
@@ -151,17 +217,20 @@ export const DashboardPage: React.FC = () => {
 
     return (
         <div style={{ minHeight: "100vh", backgroundColor: "#f8fafc", display: "flex", flexDirection: "column" }}>
-            {/* Top Fixed Combined Header Container (Navbar + Workspace Sub-Header Bar) */}
+            {/* Top Fixed Combined Header Container */}
             <header
                 style={{
-                    position: "sticky",
+                    position: "fixed",
                     top: 0,
-                    zIndex: 50,
+                    left: 0,
+                    right: 0,
+                    width: "100%",
+                    zIndex: 1000,
                     backgroundColor: "#ffffff",
                     boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.04)",
                 }}
             >
-                {/* Row 1: Top Navbar (Height: 56px) */}
+                {/* Top Navbar (Height: 56px) */}
                 <div
                     style={{
                         height: "56px",
@@ -171,6 +240,8 @@ export const DashboardPage: React.FC = () => {
                         alignItems: "center",
                         justifyContent: "space-between",
                         padding: "0 28px",
+                        position: "relative",
+                        zIndex: 1001,
                     }}
                 >
                     {/* Left: NestPay Branding */}
@@ -185,12 +256,16 @@ export const DashboardPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Right: Notification Bell + Profile Avatar ONLY */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                    {/* Right: Notification Bell + Profile Avatar */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+
                         {/* 1. Notification Bell Icon */}
                         <button
                             type="button"
-                            onClick={() => handleSelectTab("notification")}
+                            onClick={() => {
+                                handleSelectTab("notification");
+                                loadNotifications();
+                            }}
                             title="Notifications"
                             style={{
                                 position: "relative",
@@ -220,6 +295,29 @@ export const DashboardPage: React.FC = () => {
                             }}
                         >
                             <NotificationIcon size={19} />
+                            {unreadCount > 0 && (
+                                <span
+                                    style={{
+                                        position: "absolute",
+                                        top: "-2px",
+                                        right: "-2px",
+                                        backgroundColor: "#ef4444",
+                                        color: "#ffffff",
+                                        fontSize: "0.65rem",
+                                        fontWeight: 850,
+                                        width: "18px",
+                                        height: "18px",
+                                        borderRadius: "50%",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        border: "2px solid #ffffff",
+                                        boxShadow: "0 2px 4px rgba(239, 68, 68, 0.4)",
+                                    }}
+                                >
+                                    {unreadCount}
+                                </span>
+                            )}
                         </button>
 
                         {/* 2. Profile Avatar Icon */}
@@ -280,66 +378,10 @@ export const DashboardPage: React.FC = () => {
                         </button>
                     </div>
                 </div>
-
-                {/* Row 2: Sub-Header Bar for Workspace & Role Badge (Height: 42px) */}
-                <div
-                    style={{
-                        height: "42px",
-                        backgroundColor: "#f8fafc",
-                        borderBottom: "1px solid #e2e8f0",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "0 28px",
-                    }}
-                >
-                    {/* Left: Breadcrumb / Active Module Indicator */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem" }}>
-                        <span style={{ color: "#64748b", fontWeight: 500 }}>Active Workspace</span>
-                        <span style={{ color: "#cbd5e1" }}>/</span>
-                        <span style={{ color: "#0f172a", fontWeight: 700 }}>
-                            {isLoading && !activeOrg ? "Loading..." : orgName}
-                        </span>
-                    </div>
-
-                    {/* Right: Workspace & Role Badge Box */}
-                    <div
-                        style={{
-                            backgroundColor: "#ffffff",
-                            border: "1px solid #cbd5e1",
-                            borderRadius: "8px",
-                            padding: "3px 12px",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            boxShadow: "0 1px 2px rgba(0, 0, 0, 0.03)",
-                        }}
-                    >
-                        <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap" }}>
-                            {isLoading && !activeOrg ? "Loading..." : orgName}
-                        </span>
-                        <span style={{ color: "#cbd5e1", fontSize: "0.85rem" }}>|</span>
-                        <span
-                            style={{
-                                fontSize: "0.675rem",
-                                fontWeight: 700,
-                                backgroundColor: roleInfo.bg,
-                                color: roleInfo.color,
-                                padding: "2px 7px",
-                                borderRadius: "9999px",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.04em",
-                                whiteSpace: "nowrap",
-                            }}
-                        >
-                            {roleInfo.label}
-                        </span>
-                    </div>
-                </div>
             </header>
 
             {/* Dashboard Shell Layout Body */}
-            <div style={{ display: "flex", flex: 1 }}>
+            <div style={{ display: "flex", flex: 1, marginTop: "56px", minHeight: "calc(100vh - 56px)" }}>
                 {/* Side Panel */}
                 <aside
                     style={{
@@ -351,6 +393,10 @@ export const DashboardPage: React.FC = () => {
                         justifyContent: "space-between",
                         padding: "20px 12px",
                         flexShrink: 0,
+                        position: "sticky",
+                        top: "56px",
+                        height: "calc(100vh - 56px)",
+                        overflowY: "auto",
                     }}
                 >
                     {/* Top Section Nav Items (Organization, Units, Users, Payment, Invoice) */}
@@ -479,8 +525,56 @@ export const DashboardPage: React.FC = () => {
                 </aside>
 
                 {/* Main Dynamic Content Area */}
-                <main style={{ flex: 1, padding: "36px 32px 40px", overflowY: "auto" }}>
-                    <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+                <main style={{ flex: 1, padding: "20px 28px 40px", overflowY: "auto", position: "relative" }}>
+                    {/* Org & Role Box — Always fixed at top right corner under profile nav bar */}
+                    <div
+                        style={{
+                            position: "absolute",
+                            top: "16px",
+                            right: "28px",
+                            zIndex: 100,
+                            backgroundColor: "#ffffff",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "12px",
+                            padding: "8px 18px",
+                            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.05)",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "4px",
+                            minWidth: "125px",
+                            borderTop: "3px solid #4f46e5",
+                        }}
+                        title={`Active Workspace: ${orgName} (${roleInfo.label})`}
+                    >
+                        <div style={{ fontSize: "0.875rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap" }}>
+                            {isLoading && !activeOrg ? "Loading..." : orgName}
+                        </div>
+                        {activeUnitNumber && (
+                            <div style={{ fontSize: "0.775rem", fontWeight: 800, color: "#4f46e5", whiteSpace: "nowrap" }}>
+                                Unit {activeUnitNumber}
+                            </div>
+                        )}
+                        <span
+                            style={{
+                                fontSize: "0.625rem",
+                                fontWeight: 700,
+                                backgroundColor: roleInfo.bg,
+                                color: roleInfo.color,
+                                padding: "2px 8px",
+                                borderRadius: "9999px",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.04em",
+                                whiteSpace: "nowrap",
+                            }}
+                        >
+                            {roleInfo.label}
+                        </span>
+                    </div>
+
+                    <div style={{ maxWidth: "950px", margin: "0 auto" }}>
+
                         {/* MODULE 1: Organization */}
                         {activeTab === "organization" && (
                             <div className="fade-in" style={cardStyle}>
@@ -514,79 +608,60 @@ export const DashboardPage: React.FC = () => {
                             </div>
                         )}
 
-                        {/* MODULE 2: Units */}
-                        {activeTab === "units" && (
-                            <div className="fade-in" style={cardStyle}>
-                                <div style={headerStyle}>
-                                    <h2 style={titleStyle}>Units — Property & Unit Management</h2>
-                                    <p style={subtitleStyle}>Manage apartment units, occupancy status, and tenant assignments.</p>
-                                </div>
-                                <div style={bodyStyle}>
-                                    {roleInfo.isOwner ? (
-                                        <div style={badgeNoteStyle("#e0e7ff", "#3730a3")}>
-                                            🔒 <strong>Owner Action:</strong> You have permission to create, edit, and assign units in {orgName}.
-                                        </div>
-                                    ) : (
-                                        <div style={badgeNoteStyle("#f0fdf4", "#166534")}>
-                                            ℹ️ <strong>Resident View:</strong> Viewing assigned unit details and rental space information.
-                                        </div>
-                                    )}
-                                    <div style={emptyBoxStyle}>
-                                        <div style={{ fontSize: "2.2rem", marginBottom: "12px" }}>🏠</div>
-                                        <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>Units Module Placeholder</h3>
-                                        <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
-                                            Unit listings, lease creation, and occupancy controls will be built here in step 2.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
+                        {/* MODULE 2: Units (Full Interactive Module: List, Add Unit, Unit Details Hub, Edit Unit, Add User to Unit) */}
+                        {activeTab === "units" && orgId && (
+                            <>
+                                {unitSubView === "new" ? (
+                                    <AddUnitPage
+                                        orgId={orgId}
+                                        onCancel={() => navigate(`/org/${orgId}/units`)}
+                                        onCreated={(newUnitId) => navigate(`/org/${orgId}/units/${newUnitId}`)}
+                                    />
+                                ) : unitSubView === "add-user" && unitId ? (
+                                    <AddUserToUnitPage
+                                        orgId={orgId}
+                                        unitId={unitId}
+                                        onBack={() => navigate(`/org/${orgId}/units/${unitId}`)}
+                                    />
+                                ) : unitSubView === "edit" && unitId ? (
+                                    <EditUnitPage
+                                        orgId={orgId}
+                                        unitId={unitId}
+                                        onBack={() => navigate(`/org/${orgId}/units/${unitId}`)}
+                                    />
+                                ) : (unitSubView === "details" || unitId) && unitId ? (
+                                    <UnitDetailPage
+                                        orgId={orgId}
+                                        unitId={unitId}
+                                        onBack={() => navigate(`/org/${orgId}/units`)}
+                                        onEditUnit={() => navigate(`/org/${orgId}/units/${unitId}/edit`)}
+                                        onAddUser={() => navigate(`/org/${orgId}/units/${unitId}/add-user`)}
+                                    />
+                                ) : (
+                                    <UnitsList
+                                        orgId={orgId}
+                                        onAddUnit={() => navigate(`/org/${orgId}/units/new`)}
+                                        onSelectUnit={(selectedId) => navigate(`/org/${orgId}/units/${selectedId}`)}
+                                    />
+                                )}
+                            </>
                         )}
 
                         {/* MODULE 3: Users */}
-                        {activeTab === "users" && (
-                            <div className="fade-in" style={cardStyle}>
-                                <div style={headerStyle}>
-                                    <h2 style={titleStyle}>Users & Members — Access Control</h2>
-                                    <p style={subtitleStyle}>Organization members, tenant invitations, and role assignments.</p>
-                                </div>
-                                <div style={bodyStyle}>
-                                    {roleInfo.isOwner ? (
-                                        <div style={badgeNoteStyle("#e0e7ff", "#3730a3")}>
-                                            🔒 <strong>Owner Action:</strong> Invite new tenants, managers, or accountants to {orgName}.
-                                        </div>
-                                    ) : (
-                                        <div style={badgeNoteStyle("#f0fdf4", "#166534")}>
-                                            ℹ️ <strong>Resident View:</strong> View organization contacts and management directory.
-                                        </div>
-                                    )}
-                                    <div style={emptyBoxStyle}>
-                                        <div style={{ fontSize: "2.2rem", marginBottom: "12px" }}>👥</div>
-                                        <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>Users Module Placeholder</h3>
-                                        <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
-                                            Member directory, role management, and invitation flows will be built here in step 3.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
+                        {activeTab === "users" && orgId && (
+                            <UsersSection
+                                orgId={orgId}
+                                onGoToUnit={(targetUnitId) => navigate(`/org/${orgId}/units/${targetUnitId}`)}
+                            />
                         )}
 
                         {/* MODULE 4: Payment */}
                         {activeTab === "payment" && (
-                            <div className="fade-in" style={cardStyle}>
-                                <div style={headerStyle}>
-                                    <h2 style={titleStyle}>Payment — Rent Collection & History</h2>
-                                    <p style={subtitleStyle}>Online payment tracking, rent collections, and transaction history.</p>
-                                </div>
-                                <div style={bodyStyle}>
-                                    <div style={emptyBoxStyle}>
-                                        <div style={{ fontSize: "2.2rem", marginBottom: "12px" }}>💳</div>
-                                        <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>Payment Module Placeholder</h3>
-                                        <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
-                                            Payment gateway integration and rent ledger tracking will be built here in step 4.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
+                            <PaymentsSection
+                                orgId={orgId}
+                                isOwnerOrAdmin={isOwnerOrAdmin}
+                                onGoToUnit={(targetUnitId) => navigate(`/org/${orgId}/units/${targetUnitId}`)}
+                            />
                         )}
 
                         {/* MODULE 5: Invoice */}
@@ -598,7 +673,6 @@ export const DashboardPage: React.FC = () => {
                                 </div>
                                 <div style={bodyStyle}>
                                     <div style={emptyBoxStyle}>
-                                        <div style={{ fontSize: "2.2rem", marginBottom: "12px" }}>📄</div>
                                         <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>Invoice Module Placeholder</h3>
                                         <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
                                             Invoice generation, PDF exports, and billing reminders will be built here in step 5.
@@ -617,7 +691,6 @@ export const DashboardPage: React.FC = () => {
                                 </div>
                                 <div style={bodyStyle}>
                                     <div style={emptyBoxStyle}>
-                                        <div style={{ fontSize: "2.2rem", marginBottom: "12px" }}>⚙️</div>
                                         <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>Settings Module Placeholder</h3>
                                         <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
                                             Workspace settings and theme preferences will be built here in step 9.
@@ -631,17 +704,75 @@ export const DashboardPage: React.FC = () => {
                         {activeTab === "notification" && (
                             <div className="fade-in" style={cardStyle}>
                                 <div style={headerStyle}>
-                                    <h2 style={titleStyle}>Notification — Activity & Alerts</h2>
-                                    <p style={subtitleStyle}>System announcements, organization updates, and activity logs.</p>
+                                    <h2 style={titleStyle}>Notifications & Activity Alerts</h2>
+                                    <p style={subtitleStyle}>System announcements, tenant requests, and workspace updates.</p>
                                 </div>
                                 <div style={bodyStyle}>
-                                    <div style={emptyBoxStyle}>
-                                        <div style={{ fontSize: "2.2rem", marginBottom: "12px" }}>🔔</div>
-                                        <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>Notification Module Placeholder</h3>
-                                        <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
-                                            System notifications and invitation management will be built here in step 7.
-                                        </p>
-                                    </div>
+                                    {notificationsList.length === 0 ? (
+                                        <div style={emptyBoxStyle}>
+                                            <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>No notifications yet</h3>
+                                            <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
+                                                New family member requests, announcements, and activity updates will appear here.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                                            {notificationsList.map((item: any) => {
+                                                const isFamilyRequestNotif = item.title?.includes("Family Member Request");
+                                                return (
+                                                    <div
+                                                        key={item._id}
+                                                        style={{
+                                                            backgroundColor: item.isRead ? "#ffffff" : "#f0f5ff",
+                                                            border: item.isRead ? "1px solid #e2e8f0" : "1px solid #c7d2fe",
+                                                            borderRadius: "12px",
+                                                            padding: "16px 20px",
+                                                            display: "flex",
+                                                            alignItems: "center",
+                                                            justifyContent: "space-between",
+                                                            flexWrap: "wrap",
+                                                            gap: "16px",
+                                                        }}
+                                                    >
+                                                        <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", flex: 1 }}>
+                                                            <div>
+                                                                <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>
+                                                                    {item.title}
+                                                                </div>
+                                                                <div style={{ fontSize: "0.875rem", color: "#334155", marginTop: "3px" }}>
+                                                                    {item.message}
+                                                                </div>
+                                                                <div style={{ fontSize: "0.775rem", color: "#94a3b8", marginTop: "6px" }}>
+                                                                    {new Date(item.createdAt).toLocaleString()}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {isFamilyRequestNotif && roleInfo.isOwner && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSelectTab("users")}
+                                                                style={{
+                                                                    backgroundColor: "#4f46e5",
+                                                                    color: "#ffffff",
+                                                                    border: "none",
+                                                                    borderRadius: "8px",
+                                                                    padding: "9px 18px",
+                                                                    fontWeight: 700,
+                                                                    fontSize: "0.85rem",
+                                                                    cursor: "pointer",
+                                                                    boxShadow: "0 2px 6px rgba(79, 70, 229, 0.25)",
+                                                                    whiteSpace: "nowrap",
+                                                                }}
+                                                            >
+                                                                Review Request →
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -655,7 +786,6 @@ export const DashboardPage: React.FC = () => {
                                 </div>
                                 <div style={bodyStyle}>
                                     <div style={emptyBoxStyle}>
-                                        <div style={{ fontSize: "2.2rem", marginBottom: "12px" }}>💬</div>
                                         <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>Chat Module Placeholder</h3>
                                         <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
                                             Real-time tenant messaging and team communication will be built here in step 6.
@@ -777,14 +907,5 @@ const placeholderTextStyle: React.CSSProperties = {
     lineHeight: 1.5,
     margin: 0,
 };
-
-const badgeNoteStyle = (bg: string, color: string): React.CSSProperties => ({
-    padding: "12px 16px",
-    borderRadius: "10px",
-    backgroundColor: bg,
-    color: color,
-    fontSize: "0.875rem",
-    fontWeight: 500,
-});
 
 export default DashboardPage;

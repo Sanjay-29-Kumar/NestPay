@@ -1,133 +1,163 @@
-import { Request, Response } from 'express';
-import { AuthenticatedRequest } from '../../middleware/authenticate.js';
-import { paymentService } from '../../services/payment/payment.service.js';
+import { Request, Response } from "express";
+import { AuthenticatedRequest } from "../../middleware/authenticate.js";
+import paymentsService from "./payments.service.js";
 
-// Owner/Admin creates a rent record
-export async function createRent(req: Request, res: Response) {
-  try {
-    const user = (req as AuthenticatedRequest).user;
-    if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
-
-    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
-    const { propertyId, unitId, tenantId, billingPeriod, baseAmount, dueDate, adjustmentNotes } = req.body;
-
-    const rent = await paymentService.createRentRecord({
-      organizationId: orgId,
-      propertyId,
-      unitId,
-      tenantId,
-      billingPeriod,
-      baseAmount: Number(baseAmount),
-      dueDate: new Date(dueDate),
-      adjustmentNotes,
-    });
-
-    return res.status(201).json({ success: true, rent });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-}
-
-// Get rent records for organization / tenant
-export async function getRents(req: Request, res: Response) {
-  try {
-    const user = (req as AuthenticatedRequest).user;
-    if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
-
-    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
-    const { tenantId, unitId, status } = req.query;
-
-    const rents = await paymentService.getRents(orgId, {
-      tenantId: tenantId as string | undefined,
-      unitId: unitId as string | undefined,
-      status: status as string | undefined,
-    });
-
-    return res.status(200).json({ success: true, rents });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-}
-
-// Owner/Admin approves carrying forward outstanding balance
-export async function carryForwardRent(req: Request, res: Response) {
-  try {
-    const user = (req as AuthenticatedRequest).user;
-    if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
-
-    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
-    const { rentId, nextBillingPeriod, dueDate } = req.body;
-
-    const rent = await paymentService.carryForwardOutstanding({
-      rentId,
-      organizationId: orgId,
-      nextBillingPeriod,
-      dueDate: new Date(dueDate),
-    });
-
-    return res.status(200).json({ success: true, rent });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-}
-
-// Tenant initiates payment order (Razorpay Order creation)
+/**
+ * Tenant initiates Razorpay Order
+ */
 export async function initiatePayment(req: Request, res: Response) {
-  try {
-    const user = (req as AuthenticatedRequest).user;
-    if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    try {
+        const user = (req as AuthenticatedRequest).user;
+        if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    const { rentId, payAmount } = req.body;
+        const { orgId, unitId, amount, billingMonth } = req.body;
+        if (!orgId || !unitId || !amount) {
+            return res.status(400).json({ success: false, message: "orgId, unitId, and amount are required." });
+        }
 
-    const orderData = await paymentService.initiatePaymentOrder({
-      rentId,
-      tenantId: user.userId,
-      payAmount: Number(payAmount),
-    });
+        const result = await paymentsService.initiatePayment({
+            orgId,
+            unitId,
+            tenantId: user.userId,
+            amount: Number(amount),
+            billingMonth,
+        });
 
-    return res.status(200).json({ success: true, ...orderData });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
+        return res.status(200).json({ success: true, data: result });
+    } catch (error: any) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
 }
 
-// Tenant verifies payment signature after Razorpay checkout completion
+/**
+ * Tenant verifies payment signature after Razorpay Checkout completion
+ */
 export async function verifyPayment(req: Request, res: Response) {
-  try {
-    const user = (req as AuthenticatedRequest).user;
-    if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    try {
+        const user = (req as AuthenticatedRequest).user;
+        if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    const { orderId, paymentId, signature } = req.body;
+        const { orgId, orderId, paymentId, signature } = req.body;
+        if (!orgId || !orderId || !paymentId || !signature) {
+            return res.status(400).json({ success: false, message: "orgId, orderId, paymentId, and signature are required." });
+        }
 
-    const result = await paymentService.verifyAndProcessPayment({
-      orderId,
-      paymentId,
-      signature,
-      tenantId: user.userId,
-    });
+        const result = await paymentsService.verifyPayment({
+            orgId,
+            orderId,
+            paymentId,
+            signature,
+            tenantId: user.userId,
+        });
 
-    return res.status(200).json({ success: true, ...result });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
+        return res.status(200).json({ success: true, ...result });
+    } catch (error: any) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
 }
 
-// Get payment history log
+/**
+ * Razorpay Webhook Handler (payment.captured)
+ */
+export async function handleWebhook(req: Request, res: Response) {
+    try {
+        const signature = req.headers["x-razorpay-signature"] as string || "";
+        const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+
+        const result = await paymentsService.handleWebhook(req.body, rawBody, signature);
+        return res.status(200).json({ success: true, ...result });
+    } catch (error: any) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+}
+
+/**
+ * Owner / Admin Marks Payment Manually
+ */
+export async function markManualPayment(req: Request, res: Response) {
+    try {
+        const user = (req as AuthenticatedRequest).user;
+        if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const { orgId, unitId, tenantId, amount, billingMonth, manualPaymentType, manualNote, paidDate } = req.body;
+
+        if (!orgId || !unitId || !amount || !manualPaymentType) {
+            return res.status(400).json({ success: false, message: "orgId, unitId, amount, and manualPaymentType are required." });
+        }
+
+        const payment = await paymentsService.markManualPayment({
+            orgId,
+            unitId,
+            tenantId,
+            amount: Number(amount),
+            billingMonth,
+            manualPaymentType,
+            manualNote,
+            paidDate,
+            markedById: user.userId,
+        });
+
+        return res.status(201).json({ success: true, payment });
+    } catch (error: any) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+}
+
+/**
+ * Owner Undoes Manual Payment
+ */
+export async function undoManualPayment(req: Request, res: Response) {
+    try {
+        const user = (req as AuthenticatedRequest).user;
+        if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const { paymentId, orgId } = req.body;
+        if (!paymentId || !orgId) {
+            return res.status(400).json({ success: false, message: "paymentId and orgId are required." });
+        }
+
+        const payment = await paymentsService.undoManualPayment(paymentId, orgId);
+        return res.status(200).json({ success: true, payment });
+    } catch (error: any) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+}
+
+/**
+ * Get Payment History
+ */
 export async function getPaymentHistory(req: Request, res: Response) {
-  try {
-    const user = (req as AuthenticatedRequest).user;
-    if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    try {
+        const user = (req as AuthenticatedRequest).user;
+        if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
-    const { tenantId, rentId } = req.query;
+        const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId || (req.query.orgId as string);
+        const unitId = req.query.unitId as string | undefined;
+        const tenantId = req.query.tenantId as string | undefined;
 
-    const history = await paymentService.getPaymentHistory(orgId, {
-      tenantId: tenantId as string | undefined,
-      rentId: rentId as string | undefined,
-    });
+        if (!orgId) return res.status(400).json({ success: false, message: "orgId is required." });
 
-    return res.status(200).json({ success: true, history });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
+        const history = await paymentsService.getPaymentHistory(orgId, unitId, tenantId);
+        return res.status(200).json({ success: true, history });
+    } catch (error: any) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+}
+
+/**
+ * Owner updates Razorpay credentials
+ */
+export async function updateRazorpayConfig(req: Request, res: Response) {
+    try {
+        const user = (req as AuthenticatedRequest).user;
+        if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
+        const { keyId, keySecret } = req.body;
+
+        const org = await paymentsService.updateOwnerRazorpayConfig(orgId, keyId || "", keySecret || "");
+        return res.status(200).json({ success: true, razorpayConfig: org.razorpayConfig });
+    } catch (error: any) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
 }

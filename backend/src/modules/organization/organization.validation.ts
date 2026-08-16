@@ -56,6 +56,15 @@ export const updateOrganizationSchema = z.object({
         currency: z.string().max(10).optional(),
         timezone: z.string().max(50).optional(),
         language: z.string().max(10).optional(),
+        bankDetails: z
+            .object({
+                upiId: z.string().optional(),
+                accountHolderName: z.string().optional(),
+                accountNumber: z.string().optional(),
+                ifscCode: z.string().optional(),
+                bankName: z.string().optional(),
+            })
+            .optional(),
     }),
 });
 

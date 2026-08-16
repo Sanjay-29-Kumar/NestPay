@@ -121,6 +121,54 @@ export async function updateOrganization(
 }
 
 export async function getUserMemberships(userId: string) {
+    const user = await User.findById(userId);
+    if (user && user.email) {
+        const lowerEmail = user.email.toLowerCase();
+        const Customer = (await import("../../models/Customer.js")).default;
+        const pendingCustomers = await Customer.find({ email: lowerEmail });
+
+        for (const cust of pendingCustomers) {
+            cust.userId = user._id;
+            cust.status = "ACTIVE";
+            await cust.save();
+
+            const existingMem = await Membership.findOne({
+                userId: user._id,
+                organizationId: cust.organizationId,
+            });
+
+            if (!existingMem) {
+                await Membership.create({
+                    userId: user._id,
+                    organizationId: cust.organizationId,
+                    role: "MEMBER",
+                    status: "ACTIVE",
+                });
+            }
+        }
+
+        const Invitation = (await import("../../models/Invitation.js")).default;
+        const pendingInvitations = await Invitation.find({ email: lowerEmail });
+        for (const inv of pendingInvitations) {
+            inv.status = "ACCEPTED";
+            await inv.save();
+
+            const existingMem = await Membership.findOne({
+                userId: user._id,
+                organizationId: inv.organizationId,
+            });
+
+            if (!existingMem) {
+                await Membership.create({
+                    userId: user._id,
+                    organizationId: inv.organizationId,
+                    role: inv.role || "MEMBER",
+                    status: "ACTIVE",
+                });
+            }
+        }
+    }
+
     const memberships = await Membership.find({ userId, status: "ACTIVE" })
         .populate("organizationId", "name displayName slug logo description organizationType ownerId status createdAt")
         .exec();

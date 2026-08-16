@@ -23,6 +23,18 @@ export interface IOrganization extends Document {
     ownerId: Types.ObjectId;
     status: "ACTIVE" | "SUSPENDED";
     allowTenantRoommateVisibility?: boolean;
+    bankDetails?: {
+        upiId?: string;
+        accountHolderName?: string;
+        accountNumber?: string;
+        ifscCode?: string;
+        bankName?: string;
+    };
+    razorpayConfig?: {
+        keyId?: string;
+        keySecret?: string;
+        isConfigured?: boolean;
+    };
     createdAt: Date;
     updatedAt: Date;
 }
@@ -137,6 +149,18 @@ const organizationSchema = new Schema<IOrganization>(
         allowTenantRoommateVisibility: {
             type: Boolean,
             default: true,
+        },
+        bankDetails: {
+            upiId: { type: String, default: "" },
+            accountHolderName: { type: String, default: "" },
+            accountNumber: { type: String, default: "" },
+            ifscCode: { type: String, default: "" },
+            bankName: { type: String, default: "" },
+        },
+        razorpayConfig: {
+            keyId: { type: String, default: "" },
+            keySecret: { type: String, default: "" },
+            isConfigured: { type: Boolean, default: false },
         },
     },
     {

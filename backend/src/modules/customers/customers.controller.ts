@@ -6,6 +6,12 @@ import {
     updateCustomer,
     deleteCustomer,
     getMyResidence,
+    addUserToUnit,
+    getUsersGroupedByUnit,
+    createFamilyRequest,
+    getFamilyRequests,
+    approveFamilyRequest,
+    rejectFamilyRequest,
 } from "./customers.service.js";
 import { AuthenticatedRequest } from "../../middleware/authenticate.js";
 
@@ -73,3 +79,65 @@ export async function removeCustomer(req: Request, res: Response) {
     const result = await deleteCustomer(user.userId, orgId, customerId);
     return res.status(result.success ? 200 : 400).json(result);
 }
+
+export async function addUserToUnitHandler(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
+    const unitId = Array.isArray(req.params.unitId) ? req.params.unitId[0] : req.params.unitId;
+
+    const result = await addUserToUnit(user.userId, orgId, unitId, req.body);
+    return res.status(result.success ? 201 : 400).json(result);
+}
+
+export async function listUsersGroupedByUnit(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
+    const result = await getUsersGroupedByUnit(user.userId, orgId);
+    return res.status(result.success ? 200 : 400).json(result);
+}
+
+export async function submitFamilyRequest(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
+    const result = await createFamilyRequest(user.userId, orgId, req.body);
+    return res.status(result.success ? 201 : 400).json(result);
+}
+
+export async function listFamilyRequests(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
+    const result = await getFamilyRequests(user.userId, orgId);
+    return res.status(result.success ? 200 : 400).json(result);
+}
+
+export async function approveFamilyRequestController(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
+    const requestId = Array.isArray(req.params.requestId) ? req.params.requestId[0] : req.params.requestId;
+
+    const result = await approveFamilyRequest(user.userId, orgId, requestId);
+    return res.status(result.success ? 200 : 400).json(result);
+}
+
+export async function rejectFamilyRequestController(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
+    const requestId = Array.isArray(req.params.requestId) ? req.params.requestId[0] : req.params.requestId;
+    const reason = req.body.reason;
+
+    const result = await rejectFamilyRequest(user.userId, orgId, requestId, reason);
+    return res.status(result.success ? 200 : 400).json(result);
+}
+

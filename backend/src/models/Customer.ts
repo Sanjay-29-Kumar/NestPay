@@ -22,6 +22,9 @@ export interface ICustomer extends Document {
         documentUrl?: string;
     }>;
     documents?: string[];
+    occupancyRole?: "Single" | "Family Head" | "Sharing" | "Family Member";
+    familyHeadId?: Types.ObjectId;
+    moveInDate?: Date;
     status: "ACTIVE" | "PAST" | "PENDING";
     createdAt: Date;
     updatedAt: Date;
@@ -92,6 +95,20 @@ const customerSchema = new Schema<ICustomer>(
         documents: {
             type: [String],
             default: [],
+        },
+        occupancyRole: {
+            type: String,
+            enum: ["Single", "Family Head", "Sharing", "Family Member"],
+            default: "Single",
+        },
+        familyHeadId: {
+            type: Schema.Types.ObjectId,
+            ref: "Customer",
+            default: null,
+        },
+        moveInDate: {
+            type: Date,
+            default: null,
         },
         status: {
             type: String,

@@ -4,30 +4,23 @@ export interface IUnit extends Document {
     organizationId: Types.ObjectId;
     propertyId: Types.ObjectId;
     unitNumber: string;
-    unitType:
-        | "FLAT"
-        | "ROOM"
-        | "SHOP"
-        | "OFFICE"
-        | "SUITE"
-        | "VILLA"
-        | "BLOCK"
-        | "FLOOR"
-        | "ONE_RK"
-        | "ONE_BHK"
-        | "TWO_BHK"
-        | "THREE_BHK"
-        | "SHARED_ROOM"
-        | "BED_SPACE"
-        | "LINE_UNIT";
+    blockWing?: string;
+    roomType?: string;
+    unitType: string;
     floor?: string;
     areaSqFt?: number;
     bedrooms?: number;
     bathrooms?: number;
     maxCapacity?: number;
     sharingType?: "PRIVATE" | "DOUBLE_SHARING" | "TRIPLE_SHARING" | "MULTI_SHARING";
+    occupancyType?: "Single" | "Family" | "Sharing";
     rentAmount: number;
     depositAmount?: number;
+    maintenanceCharge?: number;
+    furnishingStatus?: "Unfurnished" | "Semi-Furnished" | "Fully Furnished";
+    amenities?: string[];
+    photos?: string[];
+    notes?: string;
     status: "VACANT" | "OCCUPIED" | "MAINTENANCE" | "RESERVED";
     createdAt: Date;
     updatedAt: Date;
@@ -50,31 +43,23 @@ const unitSchema = new Schema<IUnit>(
             required: true,
             trim: true,
         },
+        blockWing: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        roomType: {
+            type: String,
+            default: "1BHK",
+            trim: true,
+        },
         unitType: {
             type: String,
-            enum: [
-                "FLAT",
-                "ROOM",
-                "SHOP",
-                "OFFICE",
-                "SUITE",
-                "VILLA",
-                "BLOCK",
-                "FLOOR",
-                "ONE_RK",
-                "ONE_BHK",
-                "TWO_BHK",
-                "THREE_BHK",
-                "SHARED_ROOM",
-                "BED_SPACE",
-                "LINE_UNIT",
-            ],
-            required: true,
             default: "FLAT",
         },
         floor: {
             type: String,
-            default: "G",
+            default: "",
         },
         areaSqFt: {
             type: Number,
@@ -97,14 +82,37 @@ const unitSchema = new Schema<IUnit>(
             enum: ["PRIVATE", "DOUBLE_SHARING", "TRIPLE_SHARING", "MULTI_SHARING"],
             default: "PRIVATE",
         },
+        occupancyType: {
+            type: String,
+            default: "Family",
+        },
         rentAmount: {
             type: Number,
-            required: true,
             default: 0,
         },
         depositAmount: {
             type: Number,
             default: 0,
+        },
+        maintenanceCharge: {
+            type: Number,
+            default: 0,
+        },
+        furnishingStatus: {
+            type: String,
+            default: "Unfurnished",
+        },
+        amenities: {
+            type: [String],
+            default: [],
+        },
+        photos: {
+            type: [String],
+            default: [],
+        },
+        notes: {
+            type: String,
+            default: "",
         },
         status: {
             type: String,

@@ -29,3 +29,19 @@ export interface AssignUnitInput {
     propertyId: string;
     unitId: string;
 }
+
+export interface AddUserToUnitInput {
+    name: string;
+    email: string;
+    phone: string;
+    occupancyType: "Single" | "Family Head" | "Sharing";
+}
+
+export interface CreateFamilyRequestInput {
+    unitId?: string;
+    name: string;
+    email: string;
+    phone: string;
+    relationship: string;
+}
+
