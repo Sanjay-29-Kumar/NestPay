@@ -243,7 +243,7 @@ export const WorkspacePage: React.FC = () => {
                                             const userEmail = user?.email?.toLowerCase();
                                             const userPhone = user?.phone;
                                             const tenantUnits = isOwner
-                                                ? orgUnits
+                                                ? [] // Owners/Admins manage the full organization workspace, so no unit sub-cards are listed
                                                 : orgUnits.filter((uObj: any) => {
                                                       const occs = uObj.occupants || [];
                                                       return occs.some((occ: any) => {
@@ -262,10 +262,16 @@ export const WorkspacePage: React.FC = () => {
                                                         borderRadius: "14px",
                                                         padding: "20px",
                                                         boxShadow: "0 2px 5px rgba(0,0,0,0.02)",
+                                                        cursor: isOwner ? "pointer" : "default",
+                                                    }}
+                                                    onClick={() => {
+                                                        if (isOwner) {
+                                                            handleSelectOrganization(org._id);
+                                                        }
                                                     }}
                                                 >
                                                     {/* Organization Name Header */}
-                                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+                                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                                         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                                             <div
                                                                 style={{
@@ -282,15 +288,36 @@ export const WorkspacePage: React.FC = () => {
                                                             >
                                                                 <OrganizationIcon size={18} />
                                                             </div>
-                                                            <h3 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 800, color: "#0f172a" }}>
-                                                                {org.name || "Unnamed Organization"}
-                                                            </h3>
+                                                            <div>
+                                                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                                    <h3 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 800, color: "#0f172a" }}>
+                                                                        {org.name || "Unnamed Organization"}
+                                                                    </h3>
+                                                                    <span
+                                                                        style={{
+                                                                            fontSize: "0.65rem",
+                                                                            fontWeight: 700,
+                                                                            backgroundColor: roleInfo.bg,
+                                                                            color: roleInfo.color,
+                                                                            padding: "2px 8px",
+                                                                            borderRadius: "9999px",
+                                                                            textTransform: "uppercase",
+                                                                            letterSpacing: "0.04em",
+                                                                        }}
+                                                                    >
+                                                                        {roleInfo.label}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
                                                         </div>
 
                                                         {isOwner && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleSelectOrganization(org._id)}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleSelectOrganization(org._id);
+                                                                }}
                                                                 style={{
                                                                     background: "none",
                                                                     border: "none",
