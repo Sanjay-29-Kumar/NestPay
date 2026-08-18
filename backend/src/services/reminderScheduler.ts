@@ -118,17 +118,19 @@ export async function runDailyRentReminders(): Promise<BatchReminderResult> {
     };
 }
 
+import invoiceService from "../modules/invoice/invoice.service.js";
+
 /**
  * Initializes the background node-cron scheduler running daily at 08:00 AM
  */
 export function initReminderCronJob() {
-    console.log("⏰ WhatsApp Automated Rent Reminder Cron Service initialized (Running daily at 08:00 AM).");
+    console.log("⏰ Automated Invoice Auto-Cycle & Multi-Channel Reminder Cron Service initialized (Running daily at 08:00 AM).");
 
     cron.schedule("0 8 * * *", async () => {
-        console.log("🤖 Running scheduled daily WhatsApp rent reminders batch...");
+        console.log("🤖 Running scheduled daily monthly auto-cycle and multi-channel rent reminders...");
         try {
-            const summary = await runDailyRentReminders();
-            console.log(`✅ Automated Rent Reminders Completed: ${summary.totalDispatched} dispatched, ${summary.totalFailed} failed.`);
+            const summary = await invoiceService.runMonthlyAutoCycleAndReminders();
+            console.log(`✅ Automated Auto-Cycle Completed: ${summary.processedUnits} units processed, ${summary.dispatchedRemindersCount} reminder batches triggered.`);
         } catch (err: any) {
             console.error("❌ Error running scheduled rent reminders:", err.message);
         }

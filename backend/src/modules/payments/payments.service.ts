@@ -4,6 +4,7 @@ import Organization from "../../models/Organization.js";
 import Unit from "../../models/Unit.js";
 import User from "../../models/User.js";
 import razorpayProvider from "../../services/payment/razorpay.provider.js";
+import invoiceService from "../invoice/invoice.service.js";
 
 export interface InitiatePaymentDTO {
     orgId: string;
@@ -139,6 +140,16 @@ class PaymentsService {
         payment.paidDate = new Date();
         await payment.save();
 
+        // Converge onto invoice payment completion pipeline (updates invoice status, stops reminders, fires confirmation dispatch & logs)
+        await invoiceService.processPaymentCompletion(
+            payment.organizationId.toString(),
+            payment.unitId.toString(),
+            "APP",
+            payment.amount,
+            payment.notes,
+            payment._id.toString()
+        ).catch(() => {});
+
         return {
             payment,
             message: "Payment verified and recorded successfully via Razorpay!",
@@ -170,6 +181,15 @@ class PaymentsService {
             payment.paymentStatus = PaymentStatus.PAID_APP;
             payment.paidDate = new Date();
             await payment.save();
+
+            await invoiceService.processPaymentCompletion(
+                payment.organizationId.toString(),
+                payment.unitId.toString(),
+                "APP",
+                payment.amount,
+                payment.notes,
+                payment._id.toString()
+            ).catch(() => {});
 
             return { processed: true, message: "Webhook successfully recorded payment capture" };
         }

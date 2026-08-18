@@ -12,6 +12,7 @@ import {
     getPaymentHistoryApi,
     updateOwnerRazorpayConfigApi,
 } from "../services/paymentsApi";
+import { getCurrentInvoiceApi, type InvoiceData } from "@/features/units/services/invoiceApi";
 
 interface PaymentsSectionProps {
     orgId: string;
@@ -65,6 +66,8 @@ export const PaymentsSection: React.FC<PaymentsSectionProps> = ({
     const [unitList, setUnitList] = useState<any[]>([]);
     const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
     const [paymentsHistory, setPaymentsHistory] = useState<PaymentRecord[]>([]);
+    const [currentInvoice, setCurrentInvoice] = useState<InvoiceData | null>(null);
+    const [orgName, setOrgName] = useState<string>("Workspace Property");
 
     // Tenant Razorpay Flow state
     const [rzpProcessing, setRzpProcessing] = useState<boolean>(false);
@@ -98,6 +101,7 @@ export const PaymentsSection: React.FC<PaymentsSectionProps> = ({
 
             if (orgRes.status === "fulfilled" && orgRes.value.success && orgRes.value.data?.organization) {
                 const org = orgRes.value.data.organization;
+                setOrgName(org.name || "Workspace Property");
                 if (org.bankDetails) {
                     setUpiId(org.bankDetails.upiId || "");
                     setAccountHolderName(org.bankDetails.accountHolderName || "");
@@ -140,11 +144,18 @@ export const PaymentsSection: React.FC<PaymentsSectionProps> = ({
                 }
 
                 setUnitList(rawUnits);
-                if (urlUnitId) {
-                    setSelectedUnitId(String(urlUnitId));
-                } else if (rawUnits.length > 0) {
+                let targetIdToFetch = urlUnitId;
+                if (!targetIdToFetch && rawUnits.length > 0) {
                     const firstU = rawUnits[0].unit || rawUnits[0];
-                    setSelectedUnitId(String(firstU._id || firstU.id));
+                    targetIdToFetch = String(firstU._id || firstU.id);
+                }
+                if (targetIdToFetch) {
+                    setSelectedUnitId(String(targetIdToFetch));
+                    getCurrentInvoiceApi(orgId, String(targetIdToFetch)).then((invRes) => {
+                        if (invRes.success && invRes.data?.invoice) {
+                            setCurrentInvoice(invRes.data.invoice);
+                        }
+                    }).catch(() => {});
                 }
             }
 
@@ -393,7 +404,7 @@ export const PaymentsSection: React.FC<PaymentsSectionProps> = ({
     }
 
     /* ========================================================================= */
-    /* TENANT POV: Dedicated Owner Payment Details & In-App Razorpay Checkout    */
+    /* TENANT POV: Dedicated Live Tenant Payment Dashboard Card (PAID / UNPAID)   */
     /* ========================================================================= */
     if (!isOwnerOrAdmin) {
         const targetObj = unitList.find((uObj: any) => {
@@ -405,162 +416,565 @@ export const PaymentsSection: React.FC<PaymentsSectionProps> = ({
         const activeUnitObj = targetObj.unit || targetObj || {};
         const activeUnitId = String(activeUnitObj._id || activeUnitObj.id || "default");
         const activeUnitNum = activeUnitObj.unitNumber || "101";
-        const baseRent = activeUnitObj.rentAmount || 7000;
-        const totalDue = baseRent + 1500;
 
-        const currentPaid = paymentsHistory.find(
+        // Tenant Identity Block details
+        const tenantName = user?.name || "Tenant Resident";
+        const userEmail = user?.email?.toLowerCase();
+        const userPhone = user?.phone;
+
+        const matchingOccupant = (targetObj.occupants || []).find((occ: any) => {
+            const e = occ.email?.toLowerCase();
+            const p = occ.phone;
+            return (userEmail && e === userEmail) || (userPhone && p === userPhone);
+        });
+
+        const tenantRole = matchingOccupant?.occupancyRole || (user?.role === "TENANT" ? "Primary Tenant" : "Tenant Family Member");
+
+        // Amount Breakdown: Rent, EB/Maintenance (utilities), Total
+        const baseRent = currentInvoice?.defaultRentAmount || activeUnitObj.rentAmount || 7000;
+        
+        let ebMaintenance = 0;
+        if (currentInvoice?.overrideAmount !== undefined && currentInvoice?.overrideAmount !== null) {
+            ebMaintenance = currentInvoice.overrideAmount;
+        } else if (currentInvoice?.totalAmount && currentInvoice.totalAmount > baseRent) {
+            ebMaintenance = currentInvoice.totalAmount - baseRent;
+        } else if (currentInvoice) {
+            ebMaintenance = 0;
+        } else {
+            ebMaintenance = 1500;
+        }
+
+        const totalAmount = currentInvoice?.totalAmount || (baseRent + ebMaintenance);
+
+        // Billing Period & Due Date
+        const billingPeriodStr = currentInvoice?.billingPeriod || "August 2026";
+        const dueDateFormatted = currentInvoice?.dueDate
+            ? new Date(currentInvoice.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+            : "10th August 2026";
+
+        // Live Payment Status & Matching Payment Record
+        const paymentRecord = paymentsHistory.find(
             (p) => String(p.unitId) === activeUnitId && (p.paymentStatus === "PAID_APP" || p.paymentStatus === "PAID_MANUAL" || p.paymentStatus === "SUCCESS")
         );
 
+        const isPaid = currentInvoice?.status === "PAID" || Boolean(paymentRecord);
+
+        const isPaidViaApp = paymentRecord?.paymentStatus === "PAID_APP" || paymentRecord?.paymentMode === "APP" || currentInvoice?.paymentMode === "APP";
+
+        const manualMethodText = paymentRecord?.manualPaymentType
+            ? paymentRecord.manualPaymentType === "BANK_TRANSFER"
+                ? "Bank Transfer (IMPS/NEFT)"
+                : paymentRecord.manualPaymentType === "UPI"
+                ? "Direct UPI"
+                : paymentRecord.manualPaymentType === "CASH"
+                ? "Cash"
+                : paymentRecord.manualPaymentType
+            : currentInvoice?.paymentMode || "Manual Transfer";
+
+        const recordedDateFormatted = paymentRecord?.paidDate
+            ? new Date(paymentRecord.paidDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+            : currentInvoice?.paidAt
+            ? new Date(currentInvoice.paidAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+            : new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+
         return (
-            <div className="fade-in" style={{ maxWidth: "800px", margin: "0 auto" }}>
-                <div style={{ backgroundColor: "#ffffff", borderRadius: "16px", border: "1px solid #e2e8f0", padding: "28px", boxShadow: "0 2px 6px rgba(0,0,0,0.02)" }}>
-                    <div style={{ marginBottom: "20px" }}>
-                        <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
-                            Rent Checkout & Payment
-                        </h2>
-                        <p style={{ fontSize: "0.875rem", color: "#64748b", margin: "4px 0 0" }}>
-                            Pay your monthly rent directly via Razorpay or direct bank transfer.
-                        </p>
+            <div className="fade-in" style={{ maxWidth: "860px", margin: "0 auto" }}>
+                {msg && (
+                    <div
+                        style={{
+                            padding: "12px 16px",
+                            borderRadius: "10px",
+                            marginBottom: "20px",
+                            backgroundColor: msg.type === "success" ? "#dcfce7" : "#fee2e2",
+                            color: msg.type === "success" ? "#166534" : "#991b1b",
+                            fontWeight: 600,
+                            fontSize: "0.875rem",
+                        }}
+                    >
+                        {msg.text}
                     </div>
+                )}
 
-                    {msg && (
-                        <div
-                            style={{
-                                padding: "12px 16px",
-                                borderRadius: "10px",
-                                marginBottom: "20px",
-                                backgroundColor: msg.type === "success" ? "#dcfce7" : "#fee2e2",
-                                color: msg.type === "success" ? "#166534" : "#991b1b",
-                                fontWeight: 600,
-                                fontSize: "0.875rem",
-                            }}
-                        >
-                            {msg.text}
-                        </div>
-                    )}
-
-                    {/* Rent Demand / Status Card */}
-                    <div style={{ backgroundColor: currentPaid ? "#f0fdf4" : "#eef2ff", border: `1px solid ${currentPaid ? "#bbf7d0" : "#c7d2fe"}`, borderRadius: "14px", padding: "20px", marginBottom: "24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+                <div
+                    style={{
+                        backgroundColor: "#ffffff",
+                        borderRadius: "18px",
+                        border: "1px solid #e2e8f0",
+                        padding: "32px",
+                        boxShadow: "0 4px 12px -2px rgba(0, 0, 0, 0.04)",
+                    }}
+                >
+                    {/* 1. Identity Block */}
+                    <div
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            flexWrap: "wrap",
+                            gap: "16px",
+                            paddingBottom: "20px",
+                            marginBottom: "24px",
+                            borderBottom: "1px solid #f1f5f9",
+                        }}
+                    >
                         <div>
-                            <span style={{ fontSize: "0.75rem", fontWeight: 800, color: currentPaid ? "#166534" : "#4338ca", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                                Current Rent Demand — Unit {activeUnitNum} (August 2026)
-                            </span>
-                            <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#0f172a", marginTop: "4px" }}>
-                                ₹{totalDue.toLocaleString()}
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                                <h2 style={{ fontSize: "1.35rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                                    👤 {tenantName}
+                                </h2>
+                                <span
+                                    style={{
+                                        fontSize: "0.775rem",
+                                        fontWeight: 800,
+                                        backgroundColor: "#e0e7ff",
+                                        color: "#3730a3",
+                                        padding: "4px 12px",
+                                        borderRadius: "9999px",
+                                        letterSpacing: "0.02em",
+                                    }}
+                                >
+                                    {tenantRole}
+                                </span>
                             </div>
-                            <div style={{ fontSize: "0.825rem", color: "#64748b", marginTop: "2px" }}>
-                                Base Rent: ₹{baseRent.toLocaleString()} • EB & Housekeeping: ₹1,500
+                            <div style={{ fontSize: "0.9rem", color: "#64748b", marginTop: "6px" }}>
+                                🏢 <strong>{orgName}</strong> &bull; 🏠 <strong>Unit {activeUnitNum}</strong>
                             </div>
                         </div>
 
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                            {currentPaid ? (
-                                <span style={{ backgroundColor: "#dcfce7", color: "#166534", padding: "8px 18px", borderRadius: "9999px", fontWeight: 800, fontSize: "0.875rem", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                                    ✓ {currentPaid.paymentStatus === "PAID_APP" ? "Paid — via App (Razorpay Test)" : "Paid — Manually"}
+                        <div>
+                            {isPaid ? (
+                                <span
+                                    style={{
+                                        backgroundColor: "#dcfce7",
+                                        color: "#166534",
+                                        border: "1px solid #bbf7d0",
+                                        padding: "8px 18px",
+                                        borderRadius: "9999px",
+                                        fontWeight: 800,
+                                        fontSize: "0.875rem",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        boxShadow: "0 2px 6px rgba(22, 101, 52, 0.1)",
+                                    }}
+                                >
+                                    ✓ PAID ({billingPeriodStr})
                                 </span>
                             ) : (
-                                <>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleRazorpayPayNow(activeUnitId, totalDue)}
-                                        disabled={rzpProcessing}
-                                        style={{
-                                            backgroundColor: "#4f46e5",
-                                            color: "#ffffff",
-                                            fontWeight: 800,
-                                            fontSize: "0.9rem",
-                                            padding: "12px 20px",
-                                            borderRadius: "10px",
-                                            border: "none",
-                                            cursor: "pointer",
-                                            boxShadow: "0 4px 12px rgba(79, 70, 229, 0.3)",
-                                            transition: "all 0.15s ease",
-                                        }}
-                                    >
-                                        {rzpProcessing ? "Opening..." : "💳 Pay Now with Razorpay"}
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => handleInstantSampleTestPayment(activeUnitId, totalDue)}
-                                        disabled={rzpProcessing}
-                                        style={{
-                                            backgroundColor: "#166534",
-                                            color: "#ffffff",
-                                            fontWeight: 800,
-                                            fontSize: "0.9rem",
-                                            padding: "12px 20px",
-                                            borderRadius: "10px",
-                                            border: "none",
-                                            cursor: "pointer",
-                                            boxShadow: "0 4px 12px rgba(22, 101, 52, 0.3)",
-                                            transition: "all 0.15s ease",
-                                        }}
-                                    >
-                                        ⚡ Sample Test Pay via Razorpay
-                                    </button>
-                                </>
+                                <span
+                                    style={{
+                                        backgroundColor: "#fef3c7",
+                                        color: "#92400e",
+                                        border: "1px solid #fde68a",
+                                        padding: "8px 18px",
+                                        borderRadius: "9999px",
+                                        fontWeight: 800,
+                                        fontSize: "0.875rem",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                    }}
+                                >
+                                    ⏳ UNPAID — Payment Due
+                                </span>
                             )}
                         </div>
                     </div>
 
-                    {/* Receipt Details if Paid */}
-                    {currentPaid && (
-                        <div style={{ backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px", marginBottom: "24px" }}>
-                            <h4 style={{ margin: "0 0 8px", fontSize: "0.95rem", fontWeight: 700, color: "#0f172a" }}>
-                                Payment Confirmation Details
-                            </h4>
-                            <div style={{ fontSize: "0.85rem", color: "#475569", display: "flex", flexDirection: "column", gap: "4px" }}>
-                                <div><strong>Status:</strong> {currentPaid.paymentStatus === "PAID_APP" ? "Paid via App (Razorpay Test)" : "Paid Manually"}</div>
-                                {currentPaid.providerPaymentId && <div><strong>Razorpay Payment ID:</strong> <code style={{ backgroundColor: "#e2e8f0", padding: "2px 6px", borderRadius: "4px" }}>{currentPaid.providerPaymentId}</code></div>}
-                                {currentPaid.manualPaymentType && <div><strong>Payment Mode:</strong> {currentPaid.manualPaymentType}</div>}
-                                {currentPaid.manualNote && <div><strong>Note:</strong> {currentPaid.manualNote}</div>}
-                                <div><strong>Date Recorded:</strong> {currentPaid.paidDate ? new Date(currentPaid.paidDate).toLocaleDateString() : new Date().toLocaleDateString()}</div>
+                    {/* STATE 1: PAID DISPLAY */}
+                    {isPaid ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                            {/* Amount Breakdown Card */}
+                            <div
+                                style={{
+                                    backgroundColor: "#f8fafc",
+                                    border: "1px solid #e2e8f0",
+                                    borderRadius: "14px",
+                                    padding: "24px",
+                                }}
+                            >
+                                <div style={{ fontSize: "0.8rem", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "16px" }}>
+                                    Monthly Rent & Utilities Breakdown ({billingPeriodStr})
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem", color: "#334155" }}>
+                                        <span>Fixed Base Rent</span>
+                                        <span style={{ fontWeight: 700 }}>₹{baseRent.toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem", color: "#334155" }}>
+                                        <span>EB / Maintenance (Owner-added utilities charge)</span>
+                                        <span style={{ fontWeight: 700, color: ebMaintenance > 0 ? "#4f46e5" : "#64748b" }}>
+                                            ₹{ebMaintenance.toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <div
+                                        style={{
+                                            display: "flex",
+                                            justifyContent: "space-between",
+                                            fontSize: "1.2rem",
+                                            fontWeight: 800,
+                                            color: "#0f172a",
+                                            paddingTop: "14px",
+                                            marginTop: "4px",
+                                            borderTop: "2px dashed #cbd5e1",
+                                        }}
+                                    >
+                                        <span>Total Amount Paid</span>
+                                        <span style={{ color: "#166534" }}>₹{totalAmount.toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Payment Mode & Record Details */}
+                            <div
+                                style={{
+                                    backgroundColor: "#f0fdf4",
+                                    border: "1px solid #bbf7d0",
+                                    borderRadius: "14px",
+                                    padding: "24px",
+                                }}
+                            >
+                                <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", marginBottom: "16px" }}>
+                                    <div
+                                        style={{
+                                            width: "44px",
+                                            height: "44px",
+                                            borderRadius: "12px",
+                                            backgroundColor: "#dcfce7",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            fontSize: "1.4rem",
+                                        }}
+                                    >
+                                        {isPaidViaApp ? "💳" : "📝"}
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#166534" }}>
+                                            {isPaidViaApp ? "Paid via App (Razorpay)" : `Paid Manually — ${manualMethodText}`}
+                                        </div>
+                                        <div style={{ fontSize: "0.875rem", color: "#15803d", marginTop: "4px", lineHeight: 1.4 }}>
+                                            {isPaidViaApp ? (
+                                                <>
+                                                    Payment ID: <code style={{ backgroundColor: "#dcfce7", padding: "2px 8px", borderRadius: "4px", fontWeight: 700 }}>{paymentRecord?.providerPaymentId || paymentRecord?.receiptNo || "pay_razorpay_verified"}</code>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    Recorded by property owner {paymentRecord?.markedBy?.name ? `(${paymentRecord.markedBy.name})` : ""} via {manualMethodText}.
+                                                    {paymentRecord?.manualNote && <span> Note: "{paymentRecord.manualNote}"</span>}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div
+                                    style={{
+                                        fontSize: "0.825rem",
+                                        color: "#166534",
+                                        paddingTop: "12px",
+                                        borderTop: "1px solid #bbf7d0",
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        flexWrap: "wrap",
+                                        gap: "8px",
+                                    }}
+                                >
+                                    <span>Date Paid: <strong>{recordedDateFormatted}</strong></span>
+                                    <span>Verification: <strong>{isPaidViaApp ? "Automated Razorpay Webhook" : "Owner Verified Ledger"}</strong></span>
+                                </div>
                             </div>
                         </div>
-                    )}
+                    ) : (
+                        /* STATE 2: UNPAID DISPLAY */
+                        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                            {/* Amount Due Breakdown Card */}
+                            <div
+                                style={{
+                                    backgroundColor: "#eef2ff",
+                                    border: "1px solid #c7d2fe",
+                                    borderRadius: "14px",
+                                    padding: "24px",
+                                }}
+                            >
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", marginBottom: "14px" }}>
+                                    <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "#3730a3", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                        Current Established Rent Demand ({billingPeriodStr})
+                                    </span>
+                                    <span style={{ fontSize: "0.825rem", fontWeight: 700, color: "#991b1b", backgroundColor: "#fef2f2", border: "1px solid #fecaca", padding: "3px 10px", borderRadius: "6px" }}>
+                                        Due Date: {dueDateFormatted}
+                                    </span>
+                                </div>
 
-                    {/* Manual Fallback: Owner Details & QR */}
-                    <div style={{ marginTop: "32px", paddingTop: "24px", borderTop: "1px dashed #e2e8f0" }}>
-                        <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0f172a", margin: "0 0 16px" }}>
-                            Direct UPI & Bank Transfer Fallback
-                        </h3>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem", color: "#334155" }}>
+                                        <span>Fixed Base Rent</span>
+                                        <span style={{ fontWeight: 700 }}>₹{baseRent.toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem", color: "#334155" }}>
+                                        <span>EB / Maintenance (Owner-added utilities charge)</span>
+                                        <span style={{ fontWeight: 700, color: "#4f46e5" }}>+ ₹{ebMaintenance.toLocaleString()}</span>
+                                    </div>
+                                    <div
+                                        style={{
+                                            display: "flex",
+                                            justifyContent: "space-between",
+                                            fontSize: "1.25rem",
+                                            fontWeight: 800,
+                                            color: "#0f172a",
+                                            paddingTop: "14px",
+                                            marginTop: "4px",
+                                            borderTop: "2px dashed #a5b4fc",
+                                        }}
+                                    >
+                                        <span>Total Amount Due</span>
+                                        <span style={{ color: "#4f46e5" }}>₹{totalAmount.toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: "24px", alignItems: "start" }}>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                                <div style={{ backgroundColor: "#f8fafc", padding: "12px 16px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-                                    <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Owner UPI ID</div>
-                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "4px" }}>
-                                        <span style={{ fontWeight: 800, fontSize: "1rem", color: "#0f172a" }}>{displayUpiId}</span>
-                                        <button type="button" onClick={() => handleCopy(displayUpiId, "upi")} style={{ background: "none", border: "none", color: "#4f46e5", fontWeight: 700, cursor: "pointer" }}>
-                                            {copiedField === "upi" ? "Copied!" : "Copy"}
+                            {/* Two Payment Options */}
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px" }}>
+                                {/* Option 1: Pay via App */}
+                                <div
+                                    style={{
+                                        backgroundColor: "#ffffff",
+                                        border: "2px solid #4f46e5",
+                                        borderRadius: "16px",
+                                        padding: "24px",
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        justifyContent: "space-between",
+                                        gap: "20px",
+                                        boxShadow: "0 4px 14px rgba(79, 70, 229, 0.1)",
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                                            <span style={{ fontSize: "1.4rem" }}>💳</span>
+                                            <h4 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "#0f172a" }}>
+                                                Option 1: Pay via App
+                                            </h4>
+                                        </div>
+                                        <p style={{ margin: 0, fontSize: "0.85rem", color: "#64748b", lineHeight: 1.5 }}>
+                                            Pay via Razorpay (UPI, Credit/Debit Cards, NetBanking, Wallets). Status automatically updates to <strong>PAID</strong> immediately upon verification.
+                                        </p>
+                                    </div>
+
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRazorpayPayNow(activeUnitId, totalAmount)}
+                                            disabled={rzpProcessing}
+                                            style={{
+                                                width: "100%",
+                                                backgroundColor: "#4f46e5",
+                                                color: "#ffffff",
+                                                fontWeight: 800,
+                                                fontSize: "0.95rem",
+                                                padding: "12px 20px",
+                                                borderRadius: "10px",
+                                                border: "none",
+                                                cursor: rzpProcessing ? "not-allowed" : "pointer",
+                                                boxShadow: "0 4px 12px rgba(79, 70, 229, 0.3)",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                gap: "8px",
+                                                transition: "all 0.15s ease",
+                                            }}
+                                        >
+                                            <span>💳</span>
+                                            <span>{rzpProcessing ? "Opening SDK..." : "Pay Now"}</span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => handleInstantSampleTestPayment(activeUnitId, totalAmount)}
+                                            disabled={rzpProcessing}
+                                            style={{
+                                                width: "100%",
+                                                backgroundColor: "#166534",
+                                                color: "#ffffff",
+                                                fontWeight: 800,
+                                                fontSize: "0.85rem",
+                                                padding: "10px 16px",
+                                                borderRadius: "8px",
+                                                border: "none",
+                                                cursor: rzpProcessing ? "not-allowed" : "pointer",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                gap: "6px",
+                                            }}
+                                        >
+                                            <span>⚡</span>
+                                            <span>Sample Test Pay (Instant Verify)</span>
                                         </button>
                                     </div>
                                 </div>
 
-                                <div style={{ backgroundColor: "#f8fafc", padding: "12px 16px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-                                    <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Account Holder</div>
-                                    <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#0f172a", marginTop: "4px" }}>{displayHolder}</div>
-                                </div>
+                                {/* Option 2: Direct UPI / Bank Transfer (Fallback) */}
+                                <div
+                                    style={{
+                                        backgroundColor: "#f8fafc",
+                                        border: "1px solid #cbd5e1",
+                                        borderRadius: "16px",
+                                        padding: "24px",
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        justifyContent: "space-between",
+                                        gap: "20px",
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                                            <span style={{ fontSize: "1.4rem" }}>🏦</span>
+                                            <h4 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "#0f172a" }}>
+                                                Option 2: Direct UPI / Bank Transfer (Fallback)
+                                            </h4>
+                                        </div>
+                                        <p style={{ margin: "0 0 14px", fontSize: "0.85rem", color: "#64748b", lineHeight: 1.45 }}>
+                                            Pay directly using external UPI apps (Google Pay, PhonePe, Paytm) or direct bank transfer (IMPS/NEFT) to owner.
+                                        </p>
 
-                                <div style={{ backgroundColor: "#f8fafc", padding: "12px 16px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-                                    <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Bank Account & IFSC</div>
-                                    <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#0f172a", marginTop: "4px" }}>
-                                        {accountNumber ? `${accountNumber} (${ifscCode})` : "Not provided by owner"}
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                            {/* Owner UPI ID */}
+                                            <div style={{ backgroundColor: "#ffffff", padding: "10px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.725rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Owner UPI ID</div>
+                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "2px" }}>
+                                                    <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>{displayUpiId}</span>
+                                                    <button type="button" onClick={() => handleCopy(displayUpiId, "upi")} style={{ background: "none", border: "none", color: "#4f46e5", fontWeight: 700, cursor: "pointer", fontSize: "0.8rem" }}>
+                                                        {copiedField === "upi" ? "Copied!" : "Copy"}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Account Holder */}
+                                            <div style={{ backgroundColor: "#ffffff", padding: "10px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.725rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Account Holder</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a", marginTop: "2px" }}>{displayHolder}</div>
+                                            </div>
+
+                                            {/* Bank Account & IFSC */}
+                                            <div style={{ backgroundColor: "#ffffff", padding: "10px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.725rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Bank Account & IFSC</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a", marginTop: "2px" }}>
+                                                    {accountNumber ? `${accountNumber} (${ifscCode})` : "Provided upon owner request"}
+                                                </div>
+                                            </div>
+
+                                            {previewQrUrl && (
+                                                <div style={{ textAlign: "center", backgroundColor: "#ffffff", padding: "12px", borderRadius: "10px", border: "1px solid #e2e8f0", marginTop: "4px" }}>
+                                                    <img src={previewQrUrl} alt="UPI Payment QR Code" style={{ width: "150px", height: "150px", borderRadius: "6px" }} />
+                                                    <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 700, marginTop: "6px" }}>
+                                                        Scan with GPay / PhonePe / Paytm
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Note Callout Box as required by prompt */}
+                                    <div
+                                        style={{
+                                            backgroundColor: "#eff6ff",
+                                            border: "1px solid #bfdbfe",
+                                            borderRadius: "10px",
+                                            padding: "12px 14px",
+                                            fontSize: "0.8rem",
+                                            color: "#1e40af",
+                                            lineHeight: 1.45,
+                                        }}
+                                    >
+                                        ℹ️ <strong>Note:</strong> If you've already paid via UPI/bank transfer outside the app, your payment status will update once the property owner confirms receipt.
                                     </div>
                                 </div>
                             </div>
-
-                            {previewQrUrl && (
-                                <div style={{ textAlign: "center", backgroundColor: "#ffffff", padding: "16px", borderRadius: "12px", border: "1px solid #cbd5e1" }}>
-                                    <img src={previewQrUrl} alt="UPI Payment QR Code" style={{ width: "180px", height: "180px", borderRadius: "8px" }} />
-                                    <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 700, marginTop: "8px" }}>
-                                        Scan with any UPI App
-                                    </div>
-                                </div>
-                            )}
                         </div>
+                    )}
+                </div>
+
+                {/* Standalone Separate Section: Owner Payment Details (Always Visible whether Paid or Unpaid) */}
+                <div
+                    style={{
+                        marginTop: "24px",
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "18px",
+                        padding: "24px 28px",
+                        boxShadow: "0 4px 12px -2px rgba(0, 0, 0, 0.04)",
+                    }}
+                >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+                        <div>
+                            <h3 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 800, color: "#0f172a" }}>
+                                💳 Owner's Payment Details
+                            </h3>
+                            <p style={{ margin: "2px 0 0", fontSize: "0.85rem", color: "#64748b" }}>
+                                Property Owner's linked bank account and direct UPI payment details for offline/external transfers.
+                            </p>
+                        </div>
+                        <span style={{ fontSize: "0.75rem", fontWeight: 800, backgroundColor: "#eef2ff", color: "#4f46e5", padding: "4px 12px", borderRadius: "9999px" }}>
+                            Direct Transfer Details
+                        </span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px", alignItems: "start" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                            {/* Owner UPI ID */}
+                            <div style={{ backgroundColor: "#f8fafc", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                                <div style={{ fontSize: "0.725rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Owner UPI ID</div>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "2px" }}>
+                                    <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>{displayUpiId}</span>
+                                    <button type="button" onClick={() => handleCopy(displayUpiId, "upi")} style={{ background: "none", border: "none", color: "#4f46e5", fontWeight: 700, cursor: "pointer", fontSize: "0.8rem" }}>
+                                        {copiedField === "upi" ? "Copied!" : "Copy"}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Account Holder */}
+                            <div style={{ backgroundColor: "#f8fafc", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                                <div style={{ fontSize: "0.725rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Account Holder Name</div>
+                                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a", marginTop: "2px" }}>{displayHolder}</div>
+                            </div>
+
+                            {/* Bank Account & IFSC */}
+                            <div style={{ backgroundColor: "#f8fafc", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                                <div style={{ fontSize: "0.725rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Bank Account Number & IFSC</div>
+                                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a", marginTop: "2px" }}>
+                                    {accountNumber ? `${accountNumber} (${ifscCode})` : "Provided upon owner request"}
+                                </div>
+                            </div>
+                        </div>
+
+                        {previewQrUrl ? (
+                            <div style={{ textAlign: "center", backgroundColor: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                                <img src={previewQrUrl} alt="UPI Payment QR Code" style={{ width: "150px", height: "150px", borderRadius: "6px", margin: "0 auto" }} />
+                                <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 700, marginTop: "6px" }}>
+                                    Scan with GPay / PhonePe / Paytm
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ textAlign: "center", backgroundColor: "#f8fafc", padding: "20px", borderRadius: "12px", border: "1px dashed #cbd5e1", color: "#64748b", fontSize: "0.85rem" }}>
+                                QR Code unavailable
+                            </div>
+                        )}
+                    </div>
+
+                    <div
+                        style={{
+                            marginTop: "16px",
+                            backgroundColor: "#eff6ff",
+                            border: "1px solid #bfdbfe",
+                            borderRadius: "10px",
+                            padding: "10px 14px",
+                            fontSize: "0.8rem",
+                            color: "#1e40af",
+                            lineHeight: 1.45,
+                        }}
+                    >
+                        ℹ️ <strong>Note:</strong> If you've already paid via UPI/bank transfer outside the app, your payment status will update once the property owner confirms receipt.
                     </div>
                 </div>
             </div>

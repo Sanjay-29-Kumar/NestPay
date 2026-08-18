@@ -12,6 +12,8 @@ import documentRoutes from "./modules/documents/documents.routes.js";
 import notificationRoutes from "./modules/notification/notification.routes.js";
 import paymentRoutes from "./modules/payments/payments.routes.js";
 
+import invoiceRoutes from "./modules/invoice/invoice.routes.js";
+
 const app = express();
 
 app.use(cors());
@@ -35,5 +37,6 @@ app.use("/api/v1/organizations/:orgId/documents", documentRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/organizations/:orgId/payments", paymentRoutes);
 app.use("/api/v1/payments", paymentRoutes);
+app.use("/api/v1/organizations/:orgId/units/:unitId/invoice", invoiceRoutes);
 
 export default app;

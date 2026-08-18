@@ -109,6 +109,7 @@ function AppRouter() {
                     <Route path="/org/:orgId/units/:unitId" element={<DashboardPage initialTab="units" unitSubView="details" />} />
                     <Route path="/org/:orgId/units/:unitId/edit" element={<DashboardPage initialTab="units" unitSubView="edit" />} />
                     <Route path="/org/:orgId/units/:unitId/add-user" element={<DashboardPage initialTab="units" unitSubView="add-user" />} />
+                    <Route path="/org/:orgId/units/:unitId/invoice/settings" element={<DashboardPage initialTab="units" unitSubView="details" />} />
                     <Route path="/dashboard" element={<Navigate to="/workspace" replace />} />
                 </Route>
 

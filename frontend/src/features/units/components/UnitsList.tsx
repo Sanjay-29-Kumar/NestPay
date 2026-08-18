@@ -159,38 +159,42 @@ export const UnitsList: React.FC<UnitsListProps> = ({ orgId, onAddUnit, onSelect
                         lineHeight: 1.5,
                     }}
                 >
-                    Add your first unit to start managing property spaces, room types, and tenant assignments.
+                    {isOwnerOrAdmin
+                        ? "Add your first unit to start managing property spaces, room types, and tenant assignments."
+                        : "No property units have been added to this workspace yet."}
                 </p>
-                <button
-                    type="button"
-                    onClick={onAddUnit}
-                    style={{
-                        backgroundColor: "#4f46e5",
-                        color: "#ffffff",
-                        border: "none",
-                        borderRadius: "10px",
-                        padding: "12px 28px",
-                        fontSize: "0.95rem",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        boxShadow: "0 4px 14px 0 rgba(79, 70, 229, 0.35)",
-                        transition: "all 0.2s ease",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "8px",
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = "#4338ca";
-                        e.currentTarget.style.transform = "translateY(-1px)";
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "#4f46e5";
-                        e.currentTarget.style.transform = "none";
-                    }}
-                >
-                    <span style={{ fontSize: "1.2rem", fontWeight: 800, lineHeight: 1 }}>+</span>
-                    <span>Add Unit</span>
-                </button>
+                {isOwnerOrAdmin && (
+                    <button
+                        type="button"
+                        onClick={onAddUnit}
+                        style={{
+                            backgroundColor: "#4f46e5",
+                            color: "#ffffff",
+                            border: "none",
+                            borderRadius: "10px",
+                            padding: "12px 28px",
+                            fontSize: "0.95rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            boxShadow: "0 4px 14px 0 rgba(79, 70, 229, 0.35)",
+                            transition: "all 0.2s ease",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "8px",
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "#4338ca";
+                            e.currentTarget.style.transform = "translateY(-1px)";
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "#4f46e5";
+                            e.currentTarget.style.transform = "none";
+                        }}
+                    >
+                        <span style={{ fontSize: "1.2rem", fontWeight: 800, lineHeight: 1 }}>+</span>
+                        <span>Add Unit</span>
+                    </button>
+                )}
             </div>
         );
     }
@@ -354,51 +358,53 @@ export const UnitsList: React.FC<UnitsListProps> = ({ orgId, onAddUnit, onSelect
                     );
                 })}
 
-                {/* Trailing "+ Add Unit" Tile Card */}
-                <div
-                    onClick={onAddUnit}
-                    style={{
-                        backgroundColor: "#f8fafc",
-                        border: "2px dashed #cbd5e1",
-                        borderRadius: "14px",
-                        padding: "24px 20px",
-                        cursor: "pointer",
-                        transition: "all 0.2s ease",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        minHeight: "130px",
-                        gap: "8px",
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = "#4f46e5";
-                        e.currentTarget.style.backgroundColor = "#eef2ff";
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = "#cbd5e1";
-                        e.currentTarget.style.backgroundColor = "#f8fafc";
-                    }}
-                >
+                {/* Trailing "+ Add Unit" Tile Card (Owners / Admins only) */}
+                {isOwnerOrAdmin && (
                     <div
+                        onClick={onAddUnit}
                         style={{
-                            width: "36px",
-                            height: "36px",
-                            borderRadius: "50%",
-                            backgroundColor: "#ffffff",
-                            border: "1px solid #cbd5e1",
+                            backgroundColor: "#f8fafc",
+                            border: "2px dashed #cbd5e1",
+                            borderRadius: "14px",
+                            padding: "24px 20px",
+                            cursor: "pointer",
+                            transition: "all 0.2s ease",
                             display: "flex",
+                            flexDirection: "column",
                             alignItems: "center",
                             justifyContent: "center",
-                            fontSize: "1.2rem",
-                            fontWeight: 700,
-                            color: "#4f46e5",
+                            minHeight: "130px",
+                            gap: "8px",
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = "#4f46e5";
+                            e.currentTarget.style.backgroundColor = "#eef2ff";
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = "#cbd5e1";
+                            e.currentTarget.style.backgroundColor = "#f8fafc";
                         }}
                     >
-                        +
+                        <div
+                            style={{
+                                width: "36px",
+                                height: "36px",
+                                borderRadius: "50%",
+                                backgroundColor: "#ffffff",
+                                border: "1px solid #cbd5e1",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: "1.2rem",
+                                fontWeight: 700,
+                                color: "#4f46e5",
+                            }}
+                        >
+                            +
+                        </div>
+                        <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#4f46e5" }}>Add Unit</span>
                     </div>
-                    <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#4f46e5" }}>Add Unit</span>
-                </div>
+                )}
             </div>
 
             {/* Action Menu Modal for Unit Card */}

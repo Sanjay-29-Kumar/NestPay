@@ -612,11 +612,51 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
                         {activeTab === "units" && orgId && (
                             <>
                                 {unitSubView === "new" ? (
-                                    <AddUnitPage
-                                        orgId={orgId}
-                                        onCancel={() => navigate(`/org/${orgId}/units`)}
-                                        onCreated={(newUnitId) => navigate(`/org/${orgId}/units/${newUnitId}`)}
-                                    />
+                                    isOwnerOrAdmin ? (
+                                        <AddUnitPage
+                                            orgId={orgId}
+                                            onCancel={() => navigate(`/org/${orgId}/units`)}
+                                            onCreated={(newUnitId) => navigate(`/org/${orgId}/units/${newUnitId}`)}
+                                        />
+                                    ) : (
+                                        <div
+                                            className="fade-in"
+                                            style={{
+                                                backgroundColor: "#ffffff",
+                                                border: "1px solid #e2e8f0",
+                                                borderRadius: "16px",
+                                                padding: "48px 24px",
+                                                textAlign: "center",
+                                                maxWidth: "520px",
+                                                margin: "40px auto",
+                                                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.03)",
+                                            }}
+                                        >
+                                            <div style={{ fontSize: "2.5rem", marginBottom: "12px" }}>🔒</div>
+                                            <h3 style={{ fontSize: "1.3rem", fontWeight: 800, color: "#0f172a", margin: "0 0 8px" }}>
+                                                Access Restricted
+                                            </h3>
+                                            <p style={{ fontSize: "0.925rem", color: "#64748b", margin: "0 0 24px", lineHeight: 1.5 }}>
+                                                Only property owners, administrators, or managers can add new units.
+                                            </p>
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate(`/org/${orgId}/units`)}
+                                                style={{
+                                                    backgroundColor: "#4f46e5",
+                                                    color: "#ffffff",
+                                                    border: "none",
+                                                    borderRadius: "10px",
+                                                    padding: "10px 24px",
+                                                    fontSize: "0.9rem",
+                                                    fontWeight: 700,
+                                                    cursor: "pointer",
+                                                }}
+                                            >
+                                                Back to Units List
+                                            </button>
+                                        </div>
+                                    )
                                 ) : unitSubView === "add-user" && unitId ? (
                                     <AddUserToUnitPage
                                         orgId={orgId}
@@ -658,7 +698,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
                         {/* MODULE 4: Payment */}
                         {activeTab === "payment" && (
                             <PaymentsSection
-                                orgId={orgId}
+                                orgId={orgId || ""}
                                 isOwnerOrAdmin={isOwnerOrAdmin}
                                 onGoToUnit={(targetUnitId) => navigate(`/org/${orgId}/units/${targetUnitId}`)}
                             />
