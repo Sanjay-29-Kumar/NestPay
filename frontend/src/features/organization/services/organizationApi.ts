@@ -47,3 +47,13 @@ export async function updateOrganizationApi(orgId: string, data: any) {
     const response = await api.put<{ success: boolean; message: string; data: any }>(`/organizations/${orgId}`, data);
     return response.data;
 }
+
+export async function getWhatsAppConfigApi(orgId: string) {
+    const response = await api.get<{ success: boolean; data: any }>(`/organizations/${orgId}/whatsapp-config`);
+    return response.data;
+}
+
+export async function updateWhatsAppConfigApi(orgId: string, data: any) {
+    const response = await api.put<{ success: boolean; message: string; data: any }>(`/organizations/${orgId}/whatsapp-config`, data);
+    return response.data;
+}

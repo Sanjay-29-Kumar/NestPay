@@ -110,6 +110,29 @@ export async function getUnits(
     }
 
     const query: Record<string, any> = { organizationId: orgId };
+
+    // For Tenants / Members, filter units to only those where the user is an occupant
+    if (membership.role === "TENANT" || membership.role === "MEMBER") {
+        const Customer = (await import("../../models/Customer.js")).default;
+        const User = (await import("../../models/User.js")).default;
+        const userObj = await User.findById(userId);
+        const userEmail = userObj?.email?.toLowerCase();
+        const userPhone = userObj?.phone;
+
+        const tenantCustomers = await Customer.find({
+            organizationId: orgId,
+            $or: [
+                { userId },
+                ...(userEmail ? [{ email: userEmail }] : []),
+                ...(userPhone ? [{ phone: userPhone }] : []),
+            ],
+            status: "ACTIVE",
+        });
+
+        const tenantUnitIds = tenantCustomers.map((c) => c.unitId).filter(Boolean);
+        query._id = { $in: tenantUnitIds };
+    }
+
     if (propertyId) query.propertyId = propertyId;
     if (statusFilter) query.status = statusFilter;
     if (search) {

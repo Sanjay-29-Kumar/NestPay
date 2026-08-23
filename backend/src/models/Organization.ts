@@ -35,6 +35,12 @@ export interface IOrganization extends Document {
         keySecret?: string;
         isConfigured?: boolean;
     };
+    emailSenderConfig?: {
+        senderName?: string;
+        senderEmail?: string;
+        replyToEmail?: string;
+        isVerified?: boolean;
+    };
     createdAt: Date;
     updatedAt: Date;
 }
@@ -161,6 +167,12 @@ const organizationSchema = new Schema<IOrganization>(
             keyId: { type: String, default: "" },
             keySecret: { type: String, default: "" },
             isConfigured: { type: Boolean, default: false },
+        },
+        emailSenderConfig: {
+            senderName: { type: String, default: "" },
+            senderEmail: { type: String, default: "" },
+            replyToEmail: { type: String, default: "" },
+            isVerified: { type: Boolean, default: false },
         },
     },
     {

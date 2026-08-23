@@ -20,6 +20,7 @@ export interface InvoiceData {
     overrideAmount?: number;
     totalAmount: number;
     status: "UNPAID" | "PAID" | "OVERDUE" | "PARTIALLY_PAID";
+    isEstablished?: boolean;
     paidAt?: string;
     paymentMode?: string;
     notes?: string;

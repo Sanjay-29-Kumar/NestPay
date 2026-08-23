@@ -17,6 +17,7 @@ export interface IInvoice extends Document {
     overrideAmount?: number;
     totalAmount: number;
     status: InvoiceStatus;
+    isEstablished?: boolean;
     paidAt?: Date;
     paymentMode?: string;
     notes?: string;
@@ -72,6 +73,10 @@ const invoiceSchema = new Schema<IInvoice>(
             enum: Object.values(InvoiceStatus),
             default: InvoiceStatus.UNPAID,
             index: true,
+        },
+        isEstablished: {
+            type: Boolean,
+            default: false,
         },
         paidAt: {
             type: Date,

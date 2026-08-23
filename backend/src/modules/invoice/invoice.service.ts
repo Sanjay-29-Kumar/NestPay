@@ -148,6 +148,7 @@ class InvoiceService {
                 : defaultRent + (utilitiesAmount || 0);
 
         invoice.totalAmount = calculatedTotal;
+        invoice.isEstablished = true;
         if (utilitiesAmount !== undefined) {
             invoice.overrideAmount = utilitiesAmount;
         }
@@ -186,6 +187,22 @@ class InvoiceService {
             console.error("Error dispatching bill establishment notification:", err);
             return null;
         });
+
+        // Post bill update as a system message in the unit's Chat thread
+        const { postSystemChatMessage } = await import("../chat/chat.service.js");
+        const formattedDueDate = invoice.dueDate
+            ? new Date(invoice.dueDate).toLocaleDateString("en-IN", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+              })
+            : "N/A";
+
+        await postSystemChatMessage(
+            orgId,
+            unitId,
+            `📌 Rent demand updated to ₹${invoice.totalAmount.toLocaleString()} for ${invoice.billingPeriod}. Payment Due Date: ${formattedDueDate}.`
+        ).catch((err) => console.error("Error posting system chat message:", err));
 
         return {
             invoice,
@@ -406,6 +423,25 @@ class InvoiceService {
             billingPeriod,
             processedUnits: processedCount,
             dispatchedRemindersCount,
+        };
+    }
+
+    /**
+     * Clear all payments, invoices, rents, logs, and payment notifications across database
+     */
+    async clearAllPaymentsAndInvoices() {
+        const paymentRes = await Payment.deleteMany({});
+        const invoiceRes = await Invoice.deleteMany({});
+        const rentRes = await Rent.deleteMany({});
+        const confirmationLogRes = await PaymentConfirmationLog.deleteMany({});
+        const reminderLogRes = await ReminderLog.deleteMany({});
+        
+        return {
+            paymentsDeleted: paymentRes.deletedCount,
+            invoicesDeleted: invoiceRes.deletedCount,
+            rentsDeleted: rentRes.deletedCount,
+            confirmationLogsDeleted: confirmationLogRes.deletedCount,
+            reminderLogsDeleted: reminderLogRes.deletedCount,
         };
     }
 }

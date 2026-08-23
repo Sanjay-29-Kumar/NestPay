@@ -28,6 +28,8 @@ import AddUserToUnitPage from "@/features/units/components/AddUserToUnitPage";
 import UnitDetailPage from "@/features/units/components/UnitDetailPage";
 import UsersSection from "@/features/organization/components/UsersSection";
 import PaymentsSection from "@/features/organization/components/PaymentsSection";
+import SenderSettingsSection from "@/features/organization/components/SenderSettingsSection";
+import UnitChatModule from "@/features/chat/components/UnitChatModule";
 
 export type DashboardTab =
     | "organization"
@@ -56,16 +58,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
     const activeUnitParam = searchParams.get("unitId") || unitId || currentUnitId;
     const [activeUnitNumber, setActiveUnitNumber] = useState<string | null>(null);
 
+    const [unitsList, setUnitsList] = useState<any[]>([]);
+    const [selectedChatUnitId, setSelectedChatUnitId] = useState<string | null>(null);
+
     useEffect(() => {
         if (orgId) {
             getUnitsApi(orgId).then((res) => {
                 if (res.success && res.data?.units) {
-                    const unitsList = res.data.units;
-                    const match = unitsList.find((u: any) => String(u._id || u.id) === String(activeUnitParam));
+                    const list = res.data.units;
+                    setUnitsList(list);
+                    const match = list.find((u: any) => String(u._id || u.id) === String(activeUnitParam));
                     if (match) {
                         setActiveUnitNumber(match.unitNumber);
-                    } else if (unitsList.length > 0) {
-                        setActiveUnitNumber(unitsList[0].unitNumber);
+                        setSelectedChatUnitId(String((match as any)._id || (match as any).id));
+                    } else if (list.length > 0) {
+                        setActiveUnitNumber(list[0].unitNumber);
+                        setSelectedChatUnitId(String((list[0] as any)._id || (list[0] as any).id));
                     }
                 }
             });
@@ -726,16 +734,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
                         {activeTab === "settings" && (
                             <div className="fade-in" style={cardStyle}>
                                 <div style={headerStyle}>
-                                    <h2 style={titleStyle}>Settings — Workspace Preferences</h2>
-                                    <p style={subtitleStyle}>Configure organization preferences, currency, and security parameters.</p>
+                                    <h2 style={titleStyle}>Settings — Workspace & Notification Sender Identity</h2>
+                                    <p style={subtitleStyle}>Configure organization email display identities and custom WhatsApp Business credentials.</p>
                                 </div>
                                 <div style={bodyStyle}>
-                                    <div style={emptyBoxStyle}>
-                                        <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>Settings Module Placeholder</h3>
-                                        <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
-                                            Workspace settings and theme preferences will be built here in step 9.
-                                        </p>
-                                    </div>
+                                    {orgId ? (
+                                        <SenderSettingsSection orgId={orgId} isOwnerOrAdmin={isOwnerOrAdmin} />
+                                    ) : (
+                                        <div style={{ color: "#64748b" }}>Please select an organization workspace.</div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -819,19 +826,72 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
 
                         {/* MODULE 8: Chat */}
                         {activeTab === "chat" && (
-                            <div className="fade-in" style={cardStyle}>
-                                <div style={headerStyle}>
-                                    <h2 style={titleStyle}>Chat — Messages & Communication</h2>
-                                    <p style={subtitleStyle}>Internal organization chat between property owners, managers, and tenants.</p>
-                                </div>
-                                <div style={bodyStyle}>
-                                    <div style={emptyBoxStyle}>
-                                        <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>Chat Module Placeholder</h3>
-                                        <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
-                                            Real-time tenant messaging and team communication will be built here in step 6.
-                                        </p>
+                            <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                                <div style={{ ...cardStyle, padding: "20px 24px" }}>
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "16px" }}>
+                                        <div>
+                                            <h2 style={{ ...titleStyle, fontSize: "1.25rem" }}>💬 {orgName} — Real-Time Unit Chat</h2>
+                                            <p style={{ ...subtitleStyle, fontSize: "0.85rem" }}>
+                                                {isOwnerOrAdmin
+                                                    ? `Select a unit thread in ${orgName} to communicate with unit occupants.`
+                                                    : `Chat room for your assigned unit in ${orgName}.`}
+                                            </p>
+                                        </div>
+
+                                        {unitsList.length > 1 && isOwnerOrAdmin && (
+                                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                                <label style={{ fontSize: "0.825rem", fontWeight: 700, color: "#475569" }}>
+                                                    Select Unit Thread:
+                                                </label>
+                                                <select
+                                                    value={selectedChatUnitId || ""}
+                                                    onChange={(e) => {
+                                                        const targetId = e.target.value;
+                                                        setSelectedChatUnitId(targetId);
+                                                        const targetUnit = unitsList.find((u: any) => String(u._id || u.id) === String(targetId));
+                                                        if (targetUnit) {
+                                                            setActiveUnitNumber(targetUnit.unitNumber);
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        padding: "8px 14px",
+                                                        borderRadius: "8px",
+                                                        border: "1px solid #cbd5e1",
+                                                        fontWeight: 700,
+                                                        color: "#0f172a",
+                                                        backgroundColor: "#ffffff",
+                                                        cursor: "pointer",
+                                                        outline: "none",
+                                                    }}
+                                                >
+                                                    {unitsList.map((u: any) => {
+                                                        const id = String(u._id || u.id);
+                                                        return (
+                                                            <option key={id} value={id}>
+                                                                Unit {u.unitNumber} {u.propertyId?.name ? `(${u.propertyId.name})` : ""}
+                                                            </option>
+                                                        );
+                                                    })}
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
+
+                                {orgId && (selectedChatUnitId || unitsList[0]?._id) ? (
+                                    <UnitChatModule
+                                        orgId={orgId}
+                                        unitId={selectedChatUnitId || String(unitsList[0]._id)}
+                                        unitNumber={
+                                            unitsList.find((u) => String(u._id || u.id) === String(selectedChatUnitId || unitsList[0]?._id))
+                                                ?.unitNumber
+                                        }
+                                    />
+                                ) : (
+                                    <div style={{ padding: "40px", textAlign: "center", color: "#64748b", backgroundColor: "#ffffff", borderRadius: "16px" }}>
+                                        No units found in this organization yet.
+                                    </div>
+                                )}
                             </div>
                         )}
 

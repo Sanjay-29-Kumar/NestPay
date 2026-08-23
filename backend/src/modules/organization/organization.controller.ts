@@ -70,3 +70,23 @@ export async function acceptInvite(req: Request, res: Response) {
     const result = await acceptInvitation(user.userId, token);
     return res.status(result.success ? 200 : 400).json(result);
 }
+
+export async function getWhatsAppConfigController(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
+    const { getWhatsAppConfig } = await import("./organization.service.js");
+    const result = await getWhatsAppConfig(user.userId, orgId);
+    return res.status(result.success ? 200 : 400).json(result);
+}
+
+export async function updateWhatsAppConfigController(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
+    const { updateWhatsAppConfig } = await import("./organization.service.js");
+    const result = await updateWhatsAppConfig(user.userId, orgId, req.body);
+    return res.status(result.success ? 200 : 400).json(result);
+}

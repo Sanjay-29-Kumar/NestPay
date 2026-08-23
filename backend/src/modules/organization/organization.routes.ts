@@ -7,6 +7,8 @@ import {
     inviteUser,
     getInvite,
     acceptInvite,
+    getWhatsAppConfigController,
+    updateWhatsAppConfigController,
 } from "./organization.controller.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import { authenticate } from "../../middleware/authenticate.js";
@@ -29,5 +31,8 @@ router.get("/:orgId", authenticate, getOrgDetails);
 router.put("/:orgId", authenticate, validateRequest(updateOrganizationSchema), updateOrgDetails);
 router.post("/:orgId/invite", authenticate, validateRequest(inviteUserSchema), inviteUser);
 router.post("/invitations/accept", authenticate, validateRequest(acceptInviteSchema), acceptInvite);
+
+router.get("/:orgId/whatsapp-config", authenticate, getWhatsAppConfigController);
+router.put("/:orgId/whatsapp-config", authenticate, updateWhatsAppConfigController);
 
 export default router;

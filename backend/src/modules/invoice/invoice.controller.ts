@@ -180,6 +180,18 @@ export class InvoiceController {
             res.status(500).json({ success: false, message: err.message || "Failed to run cron check." });
         }
     }
+
+    /**
+     * DELETE /api/v1/organizations/:orgId/units/:unitId/invoice/clear-all-records
+     */
+    async clearAllRecords(req: Request, res: Response) {
+        try {
+            const result = await invoiceService.clearAllPaymentsAndInvoices();
+            res.json({ success: true, message: "All payment and invoice records cleared successfully.", data: result });
+        } catch (err: any) {
+            res.status(500).json({ success: false, message: err.message || "Failed to clear payment records." });
+        }
+    }
 }
 
 export const invoiceController = new InvoiceController();

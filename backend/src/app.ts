@@ -13,11 +13,16 @@ import notificationRoutes from "./modules/notification/notification.routes.js";
 import paymentRoutes from "./modules/payments/payments.routes.js";
 
 import invoiceRoutes from "./modules/invoice/invoice.routes.js";
+import chatRoutes from "./modules/chat/chat.routes.js";
+import path from "path";
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// Serve uploads static folder for chat photo attachments
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // Initialize Passport for Google OAuth
 app.use(passport.initialize());
@@ -38,5 +43,6 @@ app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/organizations/:orgId/payments", paymentRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/organizations/:orgId/units/:unitId/invoice", invoiceRoutes);
+app.use("/api/v1/organizations/:orgId/units/:unitId/chat", chatRoutes);
 
 export default app;

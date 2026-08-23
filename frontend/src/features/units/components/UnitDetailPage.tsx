@@ -8,7 +8,6 @@ import { getUsersGroupedByUnitApi } from "@/features/organization/services/famil
 import {
     getCurrentInvoiceApi,
     establishBillApi,
-    issuePaymentDemandApi,
     type InvoiceData,
     type ReminderScheduleData,
 } from "../services/invoiceApi";
@@ -16,6 +15,7 @@ import { getPaymentHistoryApi } from "@/features/organization/services/paymentsA
 import InvoiceLogsSection from "./InvoiceLogsSection";
 import ReminderScheduleConfig from "./ReminderScheduleConfig";
 import MarkPaidModal from "./MarkPaidModal";
+import UnitChatModule from "@/features/chat/components/UnitChatModule";
 
 interface UnitDetailPageProps {
     orgId: string;
@@ -32,6 +32,30 @@ interface UtilityItem {
     label: string;
     amount: number;
 }
+
+const specCardStyle: React.CSSProperties = {
+    backgroundColor: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: "12px",
+    padding: "14px 18px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+};
+
+const specLabelStyle: React.CSSProperties = {
+    fontSize: "0.775rem",
+    fontWeight: 700,
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+};
+
+const specValueStyle: React.CSSProperties = {
+    fontSize: "0.95rem",
+    fontWeight: 800,
+    color: "#0f172a",
+};
 
 export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
     orgId,
@@ -66,7 +90,6 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
     const [utilitiesInput, setUtilitiesInput] = useState<string>("");
     const [adjustmentNotes, setAdjustmentNotes] = useState<string>("");
     const [isEstablishingBill, setIsEstablishingBill] = useState<boolean>(false);
-    const [isIssuingPayment, setIsIssuingPayment] = useState<boolean>(false);
     const [invoiceMsg, setInvoiceMsg] = useState<string | null>(null);
     const [invoiceError, setInvoiceError] = useState<string | null>(null);
     const [isMarkPaidOpen, setIsMarkPaidOpen] = useState<boolean>(false);
@@ -79,6 +102,11 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
     const [billingMonth, setBillingMonth] = useState<string>("August 2026");
     const [billSuccessMsg, setBillSuccessMsg] = useState<string | null>(null);
     const [isBillEstablished, setIsBillEstablished] = useState<boolean>(false);
+
+    // Editable amount breakdown states
+    const [rentInput, setRentInput] = useState<string>("");
+    const [ebInput, setEbInput] = useState<string>("");
+    const [maintenanceInput, setMaintenanceInput] = useState<string>("");
 
     useEffect(() => {
         loadData();
@@ -97,6 +125,7 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
             if (res.success && res.data) {
                 setInvoiceData(res.data.invoice);
                 setScheduleConfig(res.data.schedule);
+                setIsBillEstablished(Boolean(res.data.invoice.isEstablished));
                 if (res.data.invoice.notes) {
                     setAdjustmentNotes(res.data.invoice.notes);
                 }
@@ -110,27 +139,6 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
             }
         } catch {
             // Silently swallow initial fetch error
-        }
-    };
-
-    const handleIssuePaymentDemand = async () => {
-        setIsIssuingPayment(true);
-        setInvoiceMsg(null);
-        setInvoiceError(null);
-
-        try {
-            const res = await issuePaymentDemandApi(orgId, unitId);
-            if (res.success) {
-                setInvoiceMsg("Payment demand issued immediately across WhatsApp, In-App, and Email!");
-                setLogsRefreshKey((k) => k + 1);
-                setTimeout(() => setInvoiceMsg(null), 5000);
-            } else {
-                setInvoiceError(res.message || "Failed to issue payment demand.");
-            }
-        } catch {
-            setInvoiceError("Server error issuing payment demand.");
-        } finally {
-            setIsIssuingPayment(false);
         }
     };
 
@@ -206,8 +214,13 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
             });
 
             if (res.success) {
+                const wasAlreadyEstablished = isBillEstablished;
                 setIsBillEstablished(true);
-                setBillSuccessMsg(`Monthly bill of ₹${calculatedTotal.toLocaleString()} for ${billingMonth} established successfully! Multi-channel payment demand dispatched to tenant(s).`);
+                setBillSuccessMsg(
+                    wasAlreadyEstablished
+                        ? `Monthly bill of ₹${calculatedTotal.toLocaleString()} for ${billingMonth} updated successfully! Revised payment demand dispatched to tenant(s).`
+                        : `Monthly bill of ₹${calculatedTotal.toLocaleString()} for ${billingMonth} established successfully! Multi-channel payment demand dispatched to tenant(s).`
+                );
                 setLogsRefreshKey((k) => k + 1);
                 loadInvoiceData();
                 setTimeout(() => setBillSuccessMsg(null), 5000);
@@ -261,11 +274,13 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
     const isOccupied = unit.status === "OCCUPIED";
     const activeOccupants = occupants.filter((o) => o.status !== "PENDING");
 
-    const baseRentAmount = unit.rentAmount || 0;
-    const utilitiesNum = Number(utilitiesInput) || 0;
+    const baseRentNum = rentInput !== "" ? (Number(rentInput) || 0) : (unit.rentAmount || 0);
+    const ebNum = Number(ebInput) || 0;
+    const maintenanceNum = Number(maintenanceInput) || 0;
     const itemizedUtilitiesAmount = utilityItems.reduce((sum, item) => sum + (item.amount || 0), 0);
-    const totalUtilitiesAmount = utilitiesNum + itemizedUtilitiesAmount;
-    const totalPayableAmount = baseRentAmount + totalUtilitiesAmount;
+    const totalUtilitiesAmount = ebNum + maintenanceNum + itemizedUtilitiesAmount;
+    const totalPayableAmount = baseRentNum + totalUtilitiesAmount;
+    const baseRentAmount = baseRentNum;
 
     // Sharing Occupancy Dynamic Equal Split Calculation
     const isSharingUnit = unit.occupancyType === "Sharing";
@@ -844,403 +859,530 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
             )}
 
             {/* TAB 3: Payment */}
-            {activeTab === "payment" && (
-                <div
-                    style={{
-                        backgroundColor: "#ffffff",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "16px",
-                        padding: "28px",
-                        boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
-                    }}
-                >
-                    {isOwnerOrAdmin ? (
-                        /* OWNER VIEW: Establish Payment Demand & Maintenance Utilities */
-                        <form onSubmit={handleEstablishBill}>
-                            <div style={{ marginBottom: "20px" }}>
-                                <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 800, color: "#0f172a" }}>
-                                    Establish Monthly Rent & Maintenance Bill
-                                </h3>
-                                <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#64748b" }}>
-                                    Set monthly rent and dynamically add maintenance charges (water, electricity, common maintenance) for Unit {unit.unitNumber}.
-                                </p>
-                            </div>
+            {activeTab === "payment" && (() => {
+                const matchingRecordInUnitDetail = unitPaymentHistory.find((p: any) => {
+                    const rawUnitId = p.unitId?._id || p.unitId?.id || p.unitId;
+                    const pUnitId = typeof rawUnitId === "string" ? rawUnitId : String(rawUnitId || "");
+                    const cleanTargetId = String(unitId).trim();
+                    const isUnitMatch = Boolean(pUnitId) && pUnitId !== "[object Object]" && pUnitId === cleanTargetId;
+                    const isStatusMatch = p.paymentStatus === "PAID_APP" || p.paymentStatus === "PAID_MANUAL" || p.paymentStatus === "SUCCESS";
+                    return isUnitMatch && isStatusMatch;
+                });
 
-                            {billSuccessMsg && (
-                                <div
-                                    style={{
-                                        backgroundColor: "#f0fdf4",
-                                        border: "1px solid #bbf7d0",
-                                        color: "#166534",
-                                        padding: "12px 16px",
-                                        borderRadius: "10px",
-                                        fontSize: "0.875rem",
-                                        fontWeight: 600,
-                                        marginBottom: "20px",
-                                    }}
-                                >
-                                    ✓ {billSuccessMsg}
-                                </div>
-                            )}
+                const isOwnerInvoicePaid = invoiceData?.status === "PAID" || Boolean(matchingRecordInUnitDetail);
 
-                            {/* Section 1: Default Unit Rent (Read-Only) */}
-                            <div
-                                style={{
-                                    backgroundColor: "#f8fafc",
-                                    border: "1px solid #e2e8f0",
-                                    borderRadius: "12px",
-                                    padding: "16px 20px",
-                                    marginBottom: "20px",
-                                }}
-                            >
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                    <div>
-                                        <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
-                                            Default Unit Rent (Read-Only Base Rent)
-                                        </div>
-                                        <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "#4f46e5", marginTop: "2px" }}>
-                                            ₹{baseRentAmount.toLocaleString()}
-                                        </div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={onEditUnit}
-                                        style={{
-                                            background: "none",
-                                            border: "none",
-                                            color: "#4f46e5",
-                                            fontWeight: 700,
-                                            fontSize: "0.825rem",
-                                            cursor: "pointer",
-                                        }}
-                                    >
-                                        Edit in Unit Specs →
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Section 2: Dynamic Utilities & Maintenance Charges (Editable Input) */}
-                            <div style={{ marginBottom: "20px" }}>
-                                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 800, color: "#0f172a", marginBottom: "6px" }}>
-                                    Dynamic Utilities & Maintenance Charges (₹)
-                                </label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    placeholder="Enter variable charges (e.g. water, electricity, common maintenance)"
-                                    value={utilitiesInput}
-                                    onChange={(e) => setUtilitiesInput(e.target.value)}
-                                    style={{
-                                        width: "100%",
-                                        padding: "11px 14px",
-                                        borderRadius: "10px",
-                                        border: "1px solid #cbd5e1",
-                                        fontSize: "0.95rem",
-                                        fontWeight: 700,
-                                        color: "#0f172a",
-                                    }}
-                                />
-                                <span style={{ fontSize: "0.775rem", color: "#64748b", display: "block", marginTop: "4px" }}>
-                                    Owner enters this fresh each cycle — varies month to month, separate from base rent.
-                                </span>
-                            </div>
-
-                            {/* Itemized Charge Item Builder */}
-                            <div style={{ marginBottom: "24px" }}>
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                                    <div>
-                                        <h4 style={{ margin: 0, fontSize: "0.9rem", fontWeight: 800, color: "#334155" }}>
-                                            Itemized Utility Breakdown (Optional)
-                                        </h4>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleAddUtilityItem}
-                                        style={{
-                                            backgroundColor: "#f1f5f9",
-                                            color: "#334155",
-                                            border: "1px solid #cbd5e1",
-                                            borderRadius: "8px",
-                                            padding: "6px 14px",
-                                            fontWeight: 700,
-                                            fontSize: "0.8rem",
-                                            cursor: "pointer",
-                                        }}
-                                    >
-                                        + Add Charge Item
-                                    </button>
-                                </div>
-
-                                {utilityItems.length > 0 && (
-                                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                                        {utilityItems.map((item) => (
-                                            <div
-                                                key={item.id}
-                                                style={{
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    gap: "12px",
-                                                    backgroundColor: "#ffffff",
-                                                    border: "1px solid #cbd5e1",
-                                                    borderRadius: "10px",
-                                                    padding: "10px 14px",
-                                                }}
-                                            >
-                                                <input
-                                                    type="text"
-                                                    value={item.label}
-                                                    placeholder="Charge Name (e.g. Electricity Bill)"
-                                                    onChange={(e) => handleUpdateUtility(item.id, "label", e.target.value)}
-                                                    style={{
-                                                        flex: 2,
-                                                        padding: "8px 10px",
-                                                        borderRadius: "6px",
-                                                        border: "1px solid #cbd5e1",
-                                                        fontSize: "0.875rem",
-                                                        fontWeight: 600,
-                                                    }}
-                                                />
-                                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1 }}>
-                                                    <span style={{ fontWeight: 700, color: "#64748b" }}>₹</span>
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        value={item.amount || ""}
-                                                        placeholder="Amount"
-                                                        onChange={(e) => handleUpdateUtility(item.id, "amount", e.target.value)}
-                                                        style={{
-                                                            width: "100%",
-                                                            padding: "8px 10px",
-                                                            borderRadius: "6px",
-                                                            border: "1px solid #cbd5e1",
-                                                            fontSize: "0.875rem",
-                                                            fontWeight: 700,
-                                                        }}
-                                                    />
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemoveUtility(item.id)}
-                                                    style={{
-                                                        background: "none",
-                                                        border: "none",
-                                                        color: "#ef4444",
-                                                        fontWeight: 700,
-                                                        fontSize: "1rem",
-                                                        cursor: "pointer",
-                                                        padding: "4px 8px",
-                                                    }}
-                                                >
-                                                    ✕
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Section 3: Billing Period & Due Date */}
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
-                                <div>
-                                    <label style={{ display: "block", fontSize: "0.825rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
-                                        Billing Month
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={billingMonth}
-                                        onChange={(e) => setBillingMonth(e.target.value)}
-                                        style={{
-                                            width: "100%",
-                                            padding: "9px 12px",
-                                            borderRadius: "8px",
-                                            border: "1px solid #cbd5e1",
-                                            fontSize: "0.875rem",
-                                            fontWeight: 600,
-                                        }}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: "block", fontSize: "0.825rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
-                                        Payment Due Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={dueDate}
-                                        onChange={(e) => setDueDate(e.target.value)}
-                                        style={{
-                                            width: "100%",
-                                            padding: "9px 12px",
-                                            borderRadius: "8px",
-                                            border: "1px solid #cbd5e1",
-                                            fontSize: "0.875rem",
-                                            fontWeight: 600,
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Optional Adjustment Notes Field */}
-                            <div style={{ marginBottom: "20px" }}>
-                                <label style={{ display: "block", fontSize: "0.825rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
-                                    Adjustment Notes / Details (Optional)
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. Includes water bill for August"
-                                    value={adjustmentNotes}
-                                    onChange={(e) => setAdjustmentNotes(e.target.value)}
-                                    style={{
-                                        width: "100%",
-                                        padding: "9px 12px",
-                                        borderRadius: "8px",
-                                        border: "1px solid #cbd5e1",
-                                        fontSize: "0.875rem",
-                                    }}
-                                />
-                            </div>
-
-                            {/* Section 4: Total Bill Amount (Read-Only Auto-Calculated, Live Updates) */}
-                            <div
-                                style={{
-                                    backgroundColor: "#eef2ff",
-                                    border: "1px solid #c7d2fe",
-                                    borderRadius: "12px",
-                                    padding: "18px 24px",
-                                    marginBottom: "20px",
-                                }}
-                            >
-                                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "#334155" }}>
-                                        <span>Default Unit Rent</span>
-                                        <span style={{ fontWeight: 700 }}>₹{baseRentAmount.toLocaleString()}</span>
-                                    </div>
-                                    {totalUtilitiesAmount > 0 && (
-                                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "#475569" }}>
-                                            <span>Utilities & Maintenance Charges</span>
-                                            <span style={{ fontWeight: 600 }}>+ ₹{totalUtilitiesAmount.toLocaleString()}</span>
-                                        </div>
-                                    )}
+                return (
+                    <div
+                        style={{
+                            backgroundColor: "#ffffff",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "16px",
+                            padding: "28px",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
+                        }}
+                    >
+                        {isOwnerOrAdmin ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                                {/* Paid Confirmation Card (Shown when cycle status is Paid) */}
+                                {isOwnerInvoicePaid && (
                                     <div
                                         style={{
-                                            display: "flex",
-                                            justifyContent: "space-between",
-                                            paddingTop: "10px",
-                                            marginTop: "6px",
-                                            borderTop: "1px solid #c7d2fe",
-                                            fontSize: "1.1rem",
-                                            fontWeight: 800,
-                                            color: "#1e1b4b",
+                                            backgroundColor: "#f0fdf4",
+                                            border: "1px solid #bbf7d0",
+                                            borderRadius: "14px",
+                                            padding: "20px 24px",
                                         }}
                                     >
-                                        <span>Total Bill Amount (Auto-Calculated)</span>
-                                        <span style={{ color: "#4f46e5" }}>₹{totalPayableAmount.toLocaleString()}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Occupants Payment Breakdown */}
-                            <div style={{ marginTop: "24px", marginBottom: "24px" }}>
-                                <h4 style={{ margin: "0 0 12px", fontSize: "0.95rem", fontWeight: 800, color: "#0f172a" }}>
-                                    {isSharingUnit ? "Occupant Share Breakdown (Equal Split)" : "Occupant Payment Breakdown"}
-                                </h4>
-                                {activeOccupants.length === 0 ? (
-                                    <div style={{ padding: "14px", backgroundColor: "#f8fafc", borderRadius: "10px", color: "#64748b", fontSize: "0.875rem" }}>
-                                        No active occupants assigned to calculate individual shares.
-                                    </div>
-                                ) : (
-                                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                                        {activeOccupants.map((occ: any) => {
-                                            const occShare = isSharingUnit ? individualShareAmount : totalPayableAmount;
-                                            return (
-                                                <div
-                                                    key={occ._id}
-                                                    style={{
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent: "space-between",
-                                                        padding: "14px 18px",
-                                                        backgroundColor: "#f8fafc",
-                                                        border: "1px solid #e2e8f0",
-                                                        borderRadius: "12px",
-                                                    }}
-                                                >
-                                                    <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                                                        <div
-                                                            style={{
-                                                                width: "38px",
-                                                                height: "38px",
-                                                                borderRadius: "50%",
-                                                                backgroundColor: "#e0e7ff",
-                                                                color: "#4f46e5",
-                                                                fontWeight: 800,
-                                                                fontSize: "0.95rem",
-                                                                display: "flex",
-                                                                alignItems: "center",
-                                                                justifyContent: "center",
-                                                            }}
-                                                        >
-                                                            {occ.name ? occ.name[0].toUpperCase() : "T"}
-                                                        </div>
-                                                        <div>
-                                                            <div style={{ fontWeight: 800, fontSize: "0.925rem", color: "#0f172a" }}>
-                                                                {occ.name}
-                                                            </div>
-                                                            <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "2px" }}>
-                                                                {occ.email} • {occ.occupancyRole || "Sharing"}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div style={{ textAlign: "right" }}>
-                                                        <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#4f46e5" }}>
-                                                            ₹{occShare.toLocaleString()}
-                                                        </div>
-                                                        <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 600 }}>
-                                                            {isSharingUnit ? "Personal Equal Share" : "Assigned Amount"}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+                                            <div>
+                                                <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 800, color: "#166534" }}>
+                                                    ✓ Paid for {billingMonth}
+                                                </h3>
+                                                <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#15803d" }}>
+                                                    Current cycle is settled. You can still adjust amounts below and click Update Bill to revise the demand (reopens as Unpaid).
+                                                </p>
+                                            </div>
+                                            <span
+                                                style={{
+                                                    fontSize: "0.85rem",
+                                                    fontWeight: 800,
+                                                    backgroundColor: "#dcfce7",
+                                                    color: "#166534",
+                                                    border: "1px solid #86efac",
+                                                    padding: "6px 16px",
+                                                    borderRadius: "9999px",
+                                                }}
+                                            >
+                                                ✓ PAID ({billingMonth})
+                                            </span>
+                                        </div>
+                                        <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid #bbf7d0", fontSize: "0.85rem", color: "#15803d", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                                            <span>Amount Paid: <strong>₹{(invoiceData?.totalAmount || totalPayableAmount).toLocaleString()}</strong></span>
+                                            <span>Payment Mode: <strong>{matchingRecordInUnitDetail?.paymentStatus === "PAID_APP" || invoiceData?.paymentMode === "APP" ? "Paid via App (Razorpay)" : `Paid Manually ${matchingRecordInUnitDetail?.manualPaymentType ? `(${matchingRecordInUnitDetail.manualPaymentType})` : ""}`}</strong></span>
+                                            <span>Date Paid: <strong>{matchingRecordInUnitDetail?.paidDate ? new Date(matchingRecordInUnitDetail.paidDate).toLocaleDateString() : invoiceData?.paidAt ? new Date(invoiceData.paidAt).toLocaleDateString() : new Date().toLocaleDateString()}</strong></span>
+                                        </div>
                                     </div>
                                 )}
+
+                                {/* Unpaid Status Header & Mark as Paid Action Button */}
+                                {!isOwnerInvoicePaid && (
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+                                        <div>
+                                            <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800, color: "#0f172a" }}>
+                                                Monthly Rent & Maintenance Amount Management
+                                            </h3>
+                                            <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#64748b" }}>
+                                                Set monthly rent, EB, maintenance, and extra charges for <strong>{billingMonth}</strong> (Unit {unit.unitNumber}).
+                                            </p>
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                            <span
+                                                style={{
+                                                    fontSize: "0.85rem",
+                                                    fontWeight: 800,
+                                                    backgroundColor: "#fef3c7",
+                                                    color: "#92400e",
+                                                    border: "1px solid #fde68a",
+                                                    padding: "6px 16px",
+                                                    borderRadius: "9999px",
+                                                }}
+                                            >
+                                                ⏳ UNPAID
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsMarkPaidOpen(true)}
+                                                style={{
+                                                    backgroundColor: "#059669",
+                                                    color: "#ffffff",
+                                                    border: "none",
+                                                    borderRadius: "10px",
+                                                    padding: "9px 18px",
+                                                    fontWeight: 800,
+                                                    fontSize: "0.875rem",
+                                                    cursor: "pointer",
+                                                    boxShadow: "0 2px 6px rgba(5, 150, 105, 0.25)",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: "6px",
+                                                }}
+                                            >
+                                                💵 Mark as Paid
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Always Editable Amount & Bill Update Form */}
+                                <form onSubmit={handleEstablishBill} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                                    {billSuccessMsg && (
+                                        <div
+                                            style={{
+                                                backgroundColor: "#f0fdf4",
+                                                border: "1px solid #bbf7d0",
+                                                color: "#166534",
+                                                padding: "12px 16px",
+                                                borderRadius: "10px",
+                                                fontSize: "0.875rem",
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            ✓ {billSuccessMsg}
+                                        </div>
+                                    )}
+
+                                    {/* Field 1: Fixed Base Rent (Editable Override) */}
+                                    <div
+                                        style={{
+                                            backgroundColor: "#f8fafc",
+                                            border: "1px solid #e2e8f0",
+                                            borderRadius: "12px",
+                                            padding: "18px 20px",
+                                        }}
+                                    >
+                                        <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 800, color: "#0f172a", marginBottom: "6px" }}>
+                                            Fixed Base Rent (₹)
+                                        </label>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                placeholder={String(unit.rentAmount || 0)}
+                                                value={rentInput !== "" ? rentInput : (unit.rentAmount ? String(unit.rentAmount) : "")}
+                                                onChange={(e) => setRentInput(e.target.value)}
+                                                style={{
+                                                    flex: 1,
+                                                    padding: "10px 14px",
+                                                    borderRadius: "8px",
+                                                    border: "1px solid #cbd5e1",
+                                                    fontSize: "1.05rem",
+                                                    fontWeight: 800,
+                                                    color: "#4f46e5",
+                                                }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={onEditUnit}
+                                                style={{
+                                                    background: "none",
+                                                    border: "none",
+                                                    color: "#4f46e5",
+                                                    fontWeight: 700,
+                                                    fontSize: "0.825rem",
+                                                    cursor: "pointer",
+                                                    whiteSpace: "nowrap",
+                                                }}
+                                            >
+                                                Edit in Unit Specs →
+                                            </button>
+                                        </div>
+                                        <span style={{ fontSize: "0.775rem", color: "#64748b", display: "block", marginTop: "4px" }}>
+                                            Default rent is ₹{unit.rentAmount?.toLocaleString() || 0}. Editing here updates rent for this cycle.
+                                        </span>
+                                    </div>
+
+                                    {/* Field 2 & 3: EB (Electricity) and Maintenance Charges */}
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                                        <div>
+                                            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 800, color: "#0f172a", marginBottom: "6px" }}>
+                                                ⚡ EB / Electricity Charge (₹)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                placeholder="Enter electricity bill amount"
+                                                value={ebInput}
+                                                onChange={(e) => setEbInput(e.target.value)}
+                                                style={{
+                                                    width: "100%",
+                                                    padding: "10px 14px",
+                                                    borderRadius: "8px",
+                                                    border: "1px solid #cbd5e1",
+                                                    fontSize: "0.95rem",
+                                                    fontWeight: 700,
+                                                }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 800, color: "#0f172a", marginBottom: "6px" }}>
+                                                🛠️ Maintenance Charge (₹)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                placeholder="Enter maintenance charge amount"
+                                                value={maintenanceInput}
+                                                onChange={(e) => setMaintenanceInput(e.target.value)}
+                                                style={{
+                                                    width: "100%",
+                                                    padding: "10px 14px",
+                                                    borderRadius: "8px",
+                                                    border: "1px solid #cbd5e1",
+                                                    fontSize: "0.95rem",
+                                                    fontWeight: 700,
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Field 4: Itemized Charges Builder ("Other Charges") */}
+                                    <div>
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                                            <label style={{ fontSize: "0.85rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                                                📋 Other Itemized Charges (Optional)
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={handleAddUtilityItem}
+                                                style={{
+                                                    backgroundColor: "#f1f5f9",
+                                                    color: "#334155",
+                                                    border: "1px solid #cbd5e1",
+                                                    borderRadius: "8px",
+                                                    padding: "6px 14px",
+                                                    fontWeight: 700,
+                                                    fontSize: "0.8rem",
+                                                    cursor: "pointer",
+                                                }}
+                                            >
+                                                + Add Charge Item
+                                            </button>
+                                        </div>
+
+                                        {utilityItems.length > 0 ? (
+                                            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                                {utilityItems.map((item) => (
+                                                    <div
+                                                        key={item.id}
+                                                        style={{
+                                                            display: "flex",
+                                                            alignItems: "center",
+                                                            gap: "12px",
+                                                            backgroundColor: "#ffffff",
+                                                            border: "1px solid #cbd5e1",
+                                                            borderRadius: "10px",
+                                                            padding: "10px 14px",
+                                                        }}
+                                                    >
+                                                        <input
+                                                            type="text"
+                                                            value={item.label}
+                                                            placeholder="Charge Label (e.g. Water / Internet)"
+                                                            onChange={(e) => handleUpdateUtility(item.id, "label", e.target.value)}
+                                                            style={{
+                                                                flex: 2,
+                                                                padding: "8px 10px",
+                                                                borderRadius: "6px",
+                                                                border: "1px solid #cbd5e1",
+                                                                fontSize: "0.875rem",
+                                                                fontWeight: 600,
+                                                            }}
+                                                        />
+                                                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1 }}>
+                                                            <span style={{ fontWeight: 700, color: "#64748b" }}>₹</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                value={item.amount || ""}
+                                                                placeholder="Amount"
+                                                                onChange={(e) => handleUpdateUtility(item.id, "amount", e.target.value)}
+                                                                style={{
+                                                                    width: "100%",
+                                                                    padding: "8px 10px",
+                                                                    borderRadius: "6px",
+                                                                    border: "1px solid #cbd5e1",
+                                                                    fontSize: "0.875rem",
+                                                                    fontWeight: 700,
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveUtility(item.id)}
+                                                            style={{
+                                                                background: "none",
+                                                                border: "none",
+                                                                color: "#ef4444",
+                                                                fontWeight: 700,
+                                                                fontSize: "1rem",
+                                                                cursor: "pointer",
+                                                                padding: "4px 8px",
+                                                            }}
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div style={{ fontSize: "0.8rem", color: "#94a3b8", fontStyle: "italic" }}>
+                                                No extra line items added. Click "+ Add Charge Item" to add water, internet, parking, etc.
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Field 5 & 6: Billing Period & Due Date */}
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                                        <div>
+                                            <label style={{ display: "block", fontSize: "0.825rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                                                Billing Month
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={billingMonth}
+                                                onChange={(e) => setBillingMonth(e.target.value)}
+                                                style={{
+                                                    width: "100%",
+                                                    padding: "9px 12px",
+                                                    borderRadius: "8px",
+                                                    border: "1px solid #cbd5e1",
+                                                    fontSize: "0.875rem",
+                                                    fontWeight: 600,
+                                                }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{ display: "block", fontSize: "0.825rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                                                Payment Due Date
+                                            </label>
+                                            <input
+                                                type="date"
+                                                value={dueDate}
+                                                onChange={(e) => setDueDate(e.target.value)}
+                                                style={{
+                                                    width: "100%",
+                                                    padding: "9px 12px",
+                                                    borderRadius: "8px",
+                                                    border: "1px solid #cbd5e1",
+                                                    fontSize: "0.875rem",
+                                                    fontWeight: 600,
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Optional Adjustment Notes Field */}
+                                    <div>
+                                        <label style={{ display: "block", fontSize: "0.825rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                                            Adjustment Notes / Details (Optional)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. Includes electricity meter reading for August"
+                                            value={adjustmentNotes}
+                                            onChange={(e) => setAdjustmentNotes(e.target.value)}
+                                            style={{
+                                                width: "100%",
+                                                padding: "9px 12px",
+                                                borderRadius: "8px",
+                                                border: "1px solid #cbd5e1",
+                                                fontSize: "0.875rem",
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* Auto-Calculated Total Amount Breakdown */}
+                                    <div
+                                        style={{
+                                            backgroundColor: "#eef2ff",
+                                            border: "1px solid #c7d2fe",
+                                            borderRadius: "12px",
+                                            padding: "18px 24px",
+                                        }}
+                                    >
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "#334155" }}>
+                                                <span>Fixed Base Rent</span>
+                                                <span style={{ fontWeight: 700 }}>₹{baseRentNum.toLocaleString()}</span>
+                                            </div>
+                                            {ebNum > 0 && (
+                                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "#475569" }}>
+                                                    <span>⚡ Electricity Charge</span>
+                                                    <span style={{ fontWeight: 600 }}>+ ₹{ebNum.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            {maintenanceNum > 0 && (
+                                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "#475569" }}>
+                                                    <span>🛠️ Maintenance Charge</span>
+                                                    <span style={{ fontWeight: 600 }}>+ ₹{maintenanceNum.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            {itemizedUtilitiesAmount > 0 && (
+                                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "#475569" }}>
+                                                    <span>📋 Other Itemized Charges</span>
+                                                    <span style={{ fontWeight: 600 }}>+ ₹{itemizedUtilitiesAmount.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            <div
+                                                style={{
+                                                    display: "flex",
+                                                    justifyContent: "space-between",
+                                                    paddingTop: "10px",
+                                                    marginTop: "6px",
+                                                    borderTop: "1px solid #c7d2fe",
+                                                    fontSize: "1.15rem",
+                                                    fontWeight: 800,
+                                                    color: "#1e1b4b",
+                                                }}
+                                            >
+                                                <span>Total Bill Amount (Auto-Calculated)</span>
+                                                <span style={{ color: "#4f46e5" }}>₹{totalPayableAmount.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Occupants Payment Breakdown */}
+                                    <div>
+                                        <h4 style={{ margin: "0 0 12px", fontSize: "0.95rem", fontWeight: 800, color: "#0f172a" }}>
+                                            {isSharingUnit ? "Occupant Share Breakdown (Equal Split)" : "Occupant Payment Breakdown"}
+                                        </h4>
+                                        {activeOccupants.length === 0 ? (
+                                            <div style={{ padding: "14px", backgroundColor: "#f8fafc", borderRadius: "10px", color: "#64748b", fontSize: "0.875rem" }}>
+                                                No active occupants assigned to calculate individual shares.
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                                {activeOccupants.map((occ: any) => {
+                                                    const occShare = isSharingUnit ? individualShareAmount : totalPayableAmount;
+                                                    return (
+                                                        <div
+                                                            key={occ._id}
+                                                            style={{
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                justifyContent: "space-between",
+                                                                padding: "14px 18px",
+                                                                backgroundColor: "#f8fafc",
+                                                                border: "1px solid #e2e8f0",
+                                                                borderRadius: "12px",
+                                                            }}
+                                                        >
+                                                            <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                                                                <div
+                                                                    style={{
+                                                                        width: "38px",
+                                                                        height: "38px",
+                                                                        borderRadius: "50%",
+                                                                        backgroundColor: "#e0e7ff",
+                                                                        color: "#4f46e5",
+                                                                        fontWeight: 800,
+                                                                        fontSize: "0.95rem",
+                                                                        display: "flex",
+                                                                        alignItems: "center",
+                                                                        justifyContent: "center",
+                                                                    }}
+                                                                >
+                                                                    {occ.name ? occ.name[0].toUpperCase() : "T"}
+                                                                </div>
+                                                                <div>
+                                                                    <div style={{ fontWeight: 800, fontSize: "0.925rem", color: "#0f172a" }}>
+                                                                        {occ.name}
+                                                                    </div>
+                                                                    <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "2px" }}>
+                                                                        {occ.email} • {occ.occupancyRole || "Sharing"}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div style={{ textAlign: "right" }}>
+                                                                <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#4f46e5" }}>
+                                                                    ₹{occShare.toLocaleString()}
+                                                                </div>
+                                                                <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 600 }}>
+                                                                    {isSharingUnit ? "Personal Equal Share" : "Assigned Amount"}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <button
+                                        type="submit"
+                                        disabled={isEstablishingBill}
+                                        style={{
+                                            width: "100%",
+                                            padding: "14px",
+                                            backgroundColor: "#4f46e5",
+                                            color: "#ffffff",
+                                            border: "none",
+                                            borderRadius: "10px",
+                                            fontSize: "0.95rem",
+                                            fontWeight: 800,
+                                            cursor: isEstablishingBill ? "not-allowed" : "pointer",
+                                            boxShadow: "0 4px 12px rgba(79, 70, 229, 0.25)",
+                                        }}
+                                    >
+                                        {isEstablishingBill ? "Updating Changes..." : "Update Changes"}
+                                    </button>
+                                </form>
                             </div>
-
-                            <button
-                                type="submit"
-                                disabled={isEstablishingBill}
-                                style={{
-                                    width: "100%",
-                                    padding: "14px",
-                                    backgroundColor: "#4f46e5",
-                                    color: "#ffffff",
-                                    border: "none",
-                                    borderRadius: "10px",
-                                    fontSize: "0.95rem",
-                                    fontWeight: 800,
-                                    cursor: isEstablishingBill ? "not-allowed" : "pointer",
-                                    boxShadow: "0 4px 12px rgba(79, 70, 229, 0.25)",
-                                }}
-                            >
-                                {isEstablishingBill ? "Establishing Bill & Issuing Demand..." : "Establish Bill & Issue Demand"}
-                            </button>
-                        </form>
-                    ) : (
-                        /* TENANT VIEW: Active Established Bill & Equal Share Payment */
-                        <div>
-                            {(() => {
-                                const matchingRecordInUnitDetail = unitPaymentHistory.find((p: any) => {
-                                    const pUnitId = typeof p.unitId === "object" ? String((p.unitId as any)?._id || (p.unitId as any)?.id || "") : String(p.unitId || "");
-                                    const cleanTargetId = String(unitId).trim();
-                                    const isUnitMatch = !unitId || !pUnitId || pUnitId === cleanTargetId || pUnitId === "[object Object]";
-                                    const isStatusMatch = p.paymentStatus === "PAID_APP" || p.paymentStatus === "PAID_MANUAL" || p.paymentStatus === "SUCCESS";
-                                    return isUnitMatch && isStatusMatch;
-                                });
-
-                                const isPaidInUnitDetail = invoiceData?.status === "PAID" || Boolean(matchingRecordInUnitDetail);
-
-                                return isPaidInUnitDetail ? (
-                                    /* STATE 1: PAID STATE in Unit Detail */
+                        ) : (
+                            <div>
+                                {isOwnerInvoicePaid ? (
                                     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                             <div>
@@ -1314,7 +1456,6 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
                                         </div>
                                     </div>
                                 ) : (
-                                    /* STATE 2: UNPAID STATE in Unit Detail */
                                     <div>
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
                                             <div>
@@ -1427,46 +1568,22 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
                                             Pay Your Personal Share (₹{individualShareAmount.toLocaleString()}) Now →
                                         </button>
                                     </div>
-                                );
-                            })()}
-                        </div>
-                    )}
+                                )}
+                            </div>
+                        )}
 
-                    <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #f1f5f9", textAlign: "center" }}>
-                        <p style={{ margin: 0, fontSize: "0.825rem", color: "#94a3b8" }}>
-                            Payment history and full workspace collection ledger can be viewed under Payments → Unit Wise.
-                        </p>
+                        <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #f1f5f9", textAlign: "center" }}>
+                            <p style={{ margin: 0, fontSize: "0.825rem", color: "#94a3b8" }}>
+                                Payment history and full workspace collection ledger can be viewed under Payments → Unit Wise.
+                            </p>
+                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {/* TAB 4: Chat */}
             {activeTab === "chat" && (
-                <div
-                    style={{
-                        backgroundColor: "#ffffff",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "16px",
-                        padding: "28px",
-                        boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
-                    }}
-                >
-                    <div style={{ marginBottom: "20px" }}>
-                        <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "#0f172a" }}>
-                            Unit {unit.unitNumber} Chat & Messaging
-                        </h3>
-                        <p style={{ margin: "2px 0 0", fontSize: "0.85rem", color: "#64748b" }}>
-                            Direct communication between property management and Unit {unit.unitNumber} occupants.
-                        </p>
-                    </div>
-
-                    <div style={{ backgroundColor: "#f8fafc", borderRadius: "12px", padding: "36px 20px", textAlign: "center" }}>
-                        <h4 style={{ margin: "0 0 4px", color: "#0f172a" }}>Unit Communication Stream</h4>
-                        <p style={{ margin: 0, fontSize: "0.875rem", color: "#64748b" }}>
-                            Unit-level messaging, broadcast notices, and direct owner-tenant chat for Unit {unit.unitNumber} are active.
-                        </p>
-                    </div>
-                </div>
+                <UnitChatModule orgId={orgId} unitId={unitId} unitNumber={unit.unitNumber} />
             )}
 
             {/* TAB 5: Invoice & Payment Reminder System */}
@@ -1591,72 +1708,7 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
 
 
 
-                            {/* Section 2: Action Toolbar (Issue Payment Demand & Mark as Paid) */}
-                            {isOwnerOrAdmin && (
-                                <div
-                                    style={{
-                                        backgroundColor: "#f8fafc",
-                                        border: "1px solid #cbd5e1",
-                                        borderRadius: "16px",
-                                        padding: "20px",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
-                                        flexWrap: "wrap",
-                                        gap: "16px",
-                                    }}
-                                >
-                                    <div>
-                                        <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>
-                                            Owner Dispatch & Collection Actions
-                                        </div>
-                                        <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "2px" }}>
-                                            Issue payment demands manually anytime or record cash/online payments manually.
-                                        </div>
-                                    </div>
-
-                                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                                        {/* Issue Payment Action Button (Module 7) */}
-                                        <button
-                                            type="button"
-                                            onClick={handleIssuePaymentDemand}
-                                            disabled={isIssuingPayment}
-                                            style={{
-                                                backgroundColor: "#0284c7",
-                                                color: "#ffffff",
-                                                border: "none",
-                                                borderRadius: "10px",
-                                                padding: "10px 18px",
-                                                fontWeight: 800,
-                                                fontSize: "0.875rem",
-                                                cursor: isIssuingPayment ? "not-allowed" : "pointer",
-                                                boxShadow: "0 2px 6px rgba(2, 132, 199, 0.2)",
-                                            }}
-                                        >
-                                            {isIssuingPayment ? "Issuing Demand..." : "🚀 Issue Payment Demand"}
-                                        </button>
-
-                                        {/* Mark as Paid Action Button (Module 5) */}
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsMarkPaidOpen(true)}
-                                            style={{
-                                                backgroundColor: "#059669",
-                                                color: "#ffffff",
-                                                border: "none",
-                                                borderRadius: "10px",
-                                                padding: "10px 18px",
-                                                fontWeight: 800,
-                                                fontSize: "0.875rem",
-                                                cursor: "pointer",
-                                                boxShadow: "0 2px 6px rgba(5, 150, 105, 0.2)",
-                                            }}
-                                        >
-                                            💵 Mark as Paid
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+                            {/* Section 2: Read-Only Invoice Section Logs */}
 
                             {/* Section 3: Read-Only Invoice Section Logs (Module 4) */}
                             <InvoiceLogsSection orgId={orgId} unitId={unitId} key={logsRefreshKey} />
@@ -1682,30 +1734,6 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
             )}
         </div>
     );
-};
-
-const specCardStyle: React.CSSProperties = {
-    backgroundColor: "#f8fafc",
-    border: "1px solid #e2e8f0",
-    borderRadius: "12px",
-    padding: "14px 18px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-};
-
-const specLabelStyle: React.CSSProperties = {
-    fontSize: "0.775rem",
-    fontWeight: 700,
-    color: "#64748b",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-};
-
-const specValueStyle: React.CSSProperties = {
-    fontSize: "0.95rem",
-    fontWeight: 800,
-    color: "#0f172a",
 };
 
 export default UnitDetailPage;

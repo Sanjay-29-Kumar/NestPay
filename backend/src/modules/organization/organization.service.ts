@@ -350,3 +350,58 @@ export async function acceptInvitation(userId: string, token: string) {
         },
     };
 }
+
+export async function getWhatsAppConfig(userId: string, orgId: string) {
+    const membership = await Membership.findOne({
+        userId,
+        organizationId: orgId,
+        status: "ACTIVE",
+    });
+
+    if (!membership) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const WhatsAppConfig = (await import("../../models/WhatsAppConfig.js")).default;
+    const config = await WhatsAppConfig.findOne({ organizationId: orgId });
+
+    return {
+        success: true,
+        data: config,
+    };
+}
+
+export async function updateWhatsAppConfig(userId: string, orgId: string, data: any) {
+    const membership = await Membership.findOne({
+        userId,
+        organizationId: orgId,
+        role: { $in: ["OWNER", "ADMIN"] },
+        status: "ACTIVE",
+    });
+
+    if (!membership) {
+        return {
+            success: false,
+            message: "Unauthorized: Only Owners or Admins can configure WhatsApp settings.",
+        };
+    }
+
+    const WhatsAppConfig = (await import("../../models/WhatsAppConfig.js")).default;
+    const config = await WhatsAppConfig.findOneAndUpdate(
+        { organizationId: orgId },
+        {
+            organizationId: orgId,
+            phoneNumberId: data.phoneNumberId || "",
+            businessAccountId: data.businessAccountId || "",
+            displayName: data.displayName || "NestPay Notifications",
+            status: data.status || "ACTIVE",
+        },
+        { upsert: true, new: true, runValidators: true }
+    );
+
+    return {
+        success: true,
+        message: "WhatsApp configuration updated successfully.",
+        data: config,
+    };
+}

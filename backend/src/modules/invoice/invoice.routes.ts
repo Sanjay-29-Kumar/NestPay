@@ -26,4 +26,7 @@ router.get("/confirmation-logs", authenticate, invoiceController.getConfirmation
 // Manual trigger for monthly auto-cycle & reminder check (testing/admin)
 router.post("/run-cron-check", authenticate, invoiceController.runCronCheck);
 
+// Admin / Owner cleanup endpoint to reset all payments & invoices
+router.delete("/clear-all-records", authenticate, invoiceController.clearAllRecords);
+
 export default router;

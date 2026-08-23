@@ -431,20 +431,16 @@ export const PaymentsSection: React.FC<PaymentsSectionProps> = ({
         const tenantRole = matchingOccupant?.occupancyRole || (user?.role === "TENANT" ? "Primary Tenant" : "Tenant Family Member");
 
         // Amount Breakdown: Rent, EB/Maintenance (utilities), Total
-        const baseRent = currentInvoice?.defaultRentAmount || activeUnitObj.rentAmount || 7000;
+        const baseRent = currentInvoice?.defaultRentAmount ?? activeUnitObj.rentAmount ?? 0;
         
         let ebMaintenance = 0;
         if (currentInvoice?.overrideAmount !== undefined && currentInvoice?.overrideAmount !== null) {
             ebMaintenance = currentInvoice.overrideAmount;
         } else if (currentInvoice?.totalAmount && currentInvoice.totalAmount > baseRent) {
             ebMaintenance = currentInvoice.totalAmount - baseRent;
-        } else if (currentInvoice) {
-            ebMaintenance = 0;
-        } else {
-            ebMaintenance = 1500;
         }
 
-        const totalAmount = currentInvoice?.totalAmount || (baseRent + ebMaintenance);
+        const totalAmount = currentInvoice?.totalAmount ?? (baseRent + ebMaintenance);
 
         // Billing Period & Due Date
         const billingPeriodStr = currentInvoice?.billingPeriod || "August 2026";
@@ -453,9 +449,13 @@ export const PaymentsSection: React.FC<PaymentsSectionProps> = ({
             : "10th August 2026";
 
         // Live Payment Status & Matching Payment Record
-        const paymentRecord = paymentsHistory.find(
-            (p) => String(p.unitId) === activeUnitId && (p.paymentStatus === "PAID_APP" || p.paymentStatus === "PAID_MANUAL" || p.paymentStatus === "SUCCESS")
-        );
+        const paymentRecord = paymentsHistory.find((p) => {
+            const rawUnitId = (p.unitId as any)?._id || (p.unitId as any)?.id || p.unitId;
+            const pUnitId = typeof rawUnitId === "string" ? rawUnitId : String(rawUnitId || "");
+            const isUnitMatch = Boolean(pUnitId) && pUnitId !== "[object Object]" && pUnitId === String(activeUnitId);
+            const isStatusMatch = p.paymentStatus === "PAID_APP" || p.paymentStatus === "PAID_MANUAL" || p.paymentStatus === "SUCCESS";
+            return isUnitMatch && isStatusMatch;
+        });
 
         const isPaid = currentInvoice?.status === "PAID" || Boolean(paymentRecord);
 

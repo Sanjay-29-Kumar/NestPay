@@ -151,11 +151,19 @@ export async function dispatchMultiChannelNotification(
 
         let customerSuccess = true;
 
+        const ownerName = org?.emailSenderConfig?.senderName || org?.name || "Property Owner";
+        const ownerEmail = org?.emailSenderConfig?.senderEmail || org?.email;
+        const replyTo = org?.emailSenderConfig?.replyToEmail || ownerEmail;
+
         // 1. WhatsApp Dispatch
         if (customer.phone) {
+            const finalWhatsAppMessage = orgWhatsAppConfig
+                ? bodyMessage
+                : `Sent on behalf of ${ownerName} — ${orgName}:\n\n${bodyMessage}`;
+
             await sendWhatsAppTextMessage({
                 to: customer.phone,
-                message: bodyMessage,
+                message: finalWhatsAppMessage,
                 phoneNumberId: orgWhatsAppConfig?.phoneNumberId,
             }).catch(() => {});
         }
@@ -177,6 +185,9 @@ export async function dispatchMultiChannelNotification(
                 to: customer.email,
                 subject,
                 text: bodyMessage,
+                fromName: `${ownerName} (${orgName})`,
+                fromEmail: ownerEmail,
+                replyTo: replyTo || undefined,
             }).catch(() => {});
         }
 

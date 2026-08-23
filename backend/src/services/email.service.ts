@@ -5,6 +5,9 @@ export interface SendEmailOptions {
     subject: string;
     text: string;
     html?: string;
+    fromName?: string;
+    fromEmail?: string;
+    replyTo?: string;
 }
 
 export interface EmailResult {
@@ -19,8 +22,12 @@ export async function sendEmail(options: SendEmailOptions): Promise<EmailResult>
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
 
+    const fromAddress = options.fromName
+        ? `"${options.fromName}" <${options.fromEmail || user}>`
+        : process.env.SMTP_FROM || `"NestPay Notifications" <${user}>`;
+
     if (!host || !user || !pass) {
-        console.log(`📧 [Email Fallback Log] To: ${options.to} | Subject: ${options.subject}\nMessage: ${options.text}`);
+        console.log(`📧 [Email Fallback Log] From: ${fromAddress} (Reply-To: ${options.replyTo || "default"}) | To: ${options.to} | Subject: ${options.subject}\nMessage: ${options.text}`);
         return {
             success: true,
             messageId: `mock-email-${Date.now()}`,
@@ -39,7 +46,8 @@ export async function sendEmail(options: SendEmailOptions): Promise<EmailResult>
         });
 
         const info = await transporter.sendMail({
-            from: process.env.SMTP_FROM || `"NestPay Notifications" <${user}>`,
+            from: fromAddress,
+            replyTo: options.replyTo || options.fromEmail,
             to: options.to,
             subject: options.subject,
             text: options.text,

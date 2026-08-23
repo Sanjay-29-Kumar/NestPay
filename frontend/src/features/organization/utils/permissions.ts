@@ -80,7 +80,7 @@ export function getDirectoryPermissions(
         return {
             canAddUser: true,
             canRequestFamilyMember: false,
-            canViewPendingRequestsTab: true,
+            canViewPendingRequestsTab: false,
             canGoToUnitFromProfile: true,
         };
     }
