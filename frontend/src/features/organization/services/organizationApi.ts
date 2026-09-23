@@ -57,3 +57,8 @@ export async function updateWhatsAppConfigApi(orgId: string, data: any) {
     const response = await api.put<{ success: boolean; message: string; data: any }>(`/organizations/${orgId}/whatsapp-config`, data);
     return response.data;
 }
+
+export async function sendTestNotificationApi(orgId: string, data: { testEmail?: string; testPhone?: string }) {
+    const response = await api.post<{ success: boolean; message: string; data: any }>(`/organizations/${orgId}/test-dispatch`, data);
+    return response.data;
+}

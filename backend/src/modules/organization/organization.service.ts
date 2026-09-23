@@ -405,3 +405,75 @@ export async function updateWhatsAppConfig(userId: string, orgId: string, data: 
         data: config,
     };
 }
+
+export async function sendTestNotification(
+    userId: string,
+    orgId: string,
+    testData: { testEmail?: string; testPhone?: string }
+) {
+    const membership = await Membership.findOne({
+        userId,
+        organizationId: orgId,
+        role: { $in: ["OWNER", "ADMIN", "MANAGER"] },
+        status: "ACTIVE",
+    });
+
+    if (!membership) {
+        return { success: false, message: "Unauthorized: Only Owners or Admins can trigger test dispatches." };
+    }
+
+    const Organization = (await import("../../models/Organization.js")).default;
+    const org = await Organization.findById(orgId);
+    const ownerName = org?.emailSenderConfig?.senderName || org?.name || "Property Owner";
+    const ownerEmail = org?.emailSenderConfig?.senderEmail || org?.email;
+
+    const { sendEmail } = await import("../../services/email.service.js");
+    const { sendWhatsAppTextMessage } = await import("../../services/whatsapp.provider.js");
+    const WhatsAppConfig = (await import("../../models/WhatsAppConfig.js")).default;
+
+    const orgWhatsAppConfig = await WhatsAppConfig.findOne({ organizationId: orgId, status: "ACTIVE" });
+
+    let emailSent = false;
+    let whatsappSent = false;
+    let emailError = "";
+    let whatsappError = "";
+
+    if (testData.testEmail) {
+        try {
+            const emailResult = await sendEmail({
+                to: testData.testEmail,
+                subject: `[TEST Notice] Sender Identity Setup — ${org?.name || "Workspace"}`,
+                text: `Hi! This is a test notification from ${ownerName} (${ownerEmail || "No Email"}). Your per-organization sender identity is active!`,
+                fromName: `${ownerName} (${org?.name || "Workspace"})`,
+                fromEmail: ownerEmail,
+                replyTo: ownerEmail,
+            });
+            emailSent = emailResult.success;
+            if (!emailResult.success) emailError = emailResult.error || "Email delivery failed";
+        } catch (e: any) {
+            emailError = e.message || "Email exception";
+        }
+    }
+
+    if (testData.testPhone) {
+        try {
+            const waResult = await sendWhatsAppTextMessage({
+                to: testData.testPhone,
+                message: orgWhatsAppConfig
+                    ? `[TEST Notice] Direct WhatsApp dispatch from ${ownerName} (${org?.name}). Sender identity verified!`
+                    : `Sent on behalf of ${ownerName} — ${org?.name}:\n\n[TEST Notice] Sender identity verification notice. Multi-channel dispatch is active!`,
+                phoneNumberId: orgWhatsAppConfig?.phoneNumberId,
+            });
+            whatsappSent = waResult.success;
+            if (!waResult.success) whatsappError = waResult.error || "WhatsApp delivery failed";
+        } catch (e: any) {
+            whatsappError = e.message || "WhatsApp exception";
+        }
+    }
+
+    return {
+        success: true,
+        message: `Test dispatch executed. Email: ${emailSent ? "Sent ✅" : emailError || "Not attempted"}, WhatsApp: ${whatsappSent ? "Sent ✅" : whatsappError || "Not attempted"}`,
+        data: { emailSent, whatsappSent, emailError, whatsappError },
+    };
+}

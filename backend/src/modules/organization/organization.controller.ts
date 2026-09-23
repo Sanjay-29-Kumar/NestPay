@@ -90,3 +90,13 @@ export async function updateWhatsAppConfigController(req: Request, res: Response
     const result = await updateWhatsAppConfig(user.userId, orgId, req.body);
     return res.status(result.success ? 200 : 400).json(result);
 }
+
+export async function sendTestNotificationController(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const orgId = Array.isArray(req.params.orgId) ? req.params.orgId[0] : req.params.orgId;
+    const { sendTestNotification } = await import("./organization.service.js");
+    const result = await sendTestNotification(user.userId, orgId, req.body);
+    return res.status(result.success ? 200 : 400).json(result);
+}

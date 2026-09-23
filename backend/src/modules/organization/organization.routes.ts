@@ -9,6 +9,7 @@ import {
     acceptInvite,
     getWhatsAppConfigController,
     updateWhatsAppConfigController,
+    sendTestNotificationController,
 } from "./organization.controller.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import { authenticate } from "../../middleware/authenticate.js";
@@ -34,5 +35,6 @@ router.post("/invitations/accept", authenticate, validateRequest(acceptInviteSch
 
 router.get("/:orgId/whatsapp-config", authenticate, getWhatsAppConfigController);
 router.put("/:orgId/whatsapp-config", authenticate, updateWhatsAppConfigController);
+router.post("/:orgId/test-dispatch", authenticate, sendTestNotificationController);
 
 export default router;

@@ -4,6 +4,7 @@ import {
     updateOrganizationApi,
     getWhatsAppConfigApi,
     updateWhatsAppConfigApi,
+    sendTestNotificationApi,
 } from "../services/organizationApi";
 
 interface SenderSettingsSectionProps {
@@ -28,9 +29,15 @@ export const SenderSettingsSection: React.FC<SenderSettingsSectionProps> = ({
     const [whatsappDisplayName, setWhatsappDisplayName] = useState<string>("");
     const [whatsappStatus, setWhatsappStatus] = useState<string>("INACTIVE");
 
+    // Interactive Test Dispatch state
+    const [testEmail, setTestEmail] = useState<string>("sanjay8612ssk@gmail.com");
+    const [testPhone, setTestPhone] = useState<string>("8344226412");
+    const [isTesting, setIsTesting] = useState<boolean>(false);
+    const [testResultMsg, setTestResultMsg] = useState<string>("");
+    const [errorMsg, setErrorMsg] = useState<string>("");
+
     const [emailSuccessMsg, setEmailSuccessMsg] = useState<string>("");
     const [whatsappSuccessMsg, setWhatsappSuccessMsg] = useState<string>("");
-    const [errorMsg, setErrorMsg] = useState<string>("");
 
     useEffect(() => {
         if (!orgId) return;
@@ -118,6 +125,32 @@ export const SenderSettingsSection: React.FC<SenderSettingsSectionProps> = ({
             setErrorMsg("Error connecting to server.");
         } finally {
             setIsSavingWhatsApp(false);
+        }
+    };
+
+    const handleRunTestDispatch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!isOwnerOrAdmin) return;
+
+        setIsTesting(true);
+        setTestResultMsg("");
+        setErrorMsg("");
+
+        try {
+            const res = await sendTestNotificationApi(orgId, {
+                testEmail: testEmail.trim(),
+                testPhone: testPhone.trim(),
+            });
+
+            if (res.success) {
+                setTestResultMsg(res.message);
+            } else {
+                setErrorMsg(res.message || "Test dispatch failed.");
+            }
+        } catch {
+            setErrorMsg("Error triggering test dispatch.");
+        } finally {
+            setIsTesting(false);
         }
     };
 
@@ -374,6 +407,101 @@ export const SenderSettingsSection: React.FC<SenderSettingsSectionProps> = ({
                                 }}
                             >
                                 {isSavingWhatsApp ? "Saving WhatsApp Setup..." : "Save WhatsApp Credentials"}
+                            </button>
+                        </div>
+                    )}
+                </form>
+            </div>
+
+            {/* CARD 3: Live Multi-Channel Sender Identity Verification Test */}
+            <div
+                style={{
+                    backgroundColor: "#ffffff",
+                    borderRadius: "14px",
+                    border: "1px solid #e2e8f0",
+                    padding: "24px",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.04)",
+                }}
+            >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+                    <div
+                        style={{
+                            width: "36px",
+                            height: "36px",
+                            borderRadius: "10px",
+                            backgroundColor: "#fef3c7",
+                            color: "#d97706",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: 800,
+                            fontSize: "1.1rem",
+                        }}
+                    >
+                        🧪
+                    </div>
+                    <div>
+                        <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "#0f172a" }}>
+                            Live Multi-Channel Sender Verification Test
+                        </h3>
+                        <p style={{ margin: 0, fontSize: "0.825rem", color: "#64748b" }}>
+                            Trigger a test notice to verify your Owner Email and WhatsApp sender configuration.
+                        </p>
+                    </div>
+                </div>
+
+                <form onSubmit={handleRunTestDispatch} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+                        <div>
+                            <label style={labelStyle}>Recipient Test Email</label>
+                            <input
+                                type="email"
+                                placeholder="e.g. sanjay8612ssk@gmail.com"
+                                value={testEmail}
+                                onChange={(e) => setTestEmail(e.target.value)}
+                                disabled={!isOwnerOrAdmin || isTesting}
+                                style={inputStyle}
+                            />
+                        </div>
+                        <div>
+                            <label style={labelStyle}>Recipient Test WhatsApp Phone</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. 8344226412"
+                                value={testPhone}
+                                onChange={(e) => setTestPhone(e.target.value)}
+                                disabled={!isOwnerOrAdmin || isTesting}
+                                style={inputStyle}
+                            />
+                        </div>
+                    </div>
+
+                    {testResultMsg && (
+                        <div style={{ backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", color: "#15803d", padding: "12px 16px", borderRadius: "8px", fontSize: "0.85rem", fontWeight: 700 }}>
+                            🎉 {testResultMsg}
+                        </div>
+                    )}
+
+                    {isOwnerOrAdmin && (
+                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <button
+                                type="submit"
+                                disabled={isTesting}
+                                style={{
+                                    backgroundColor: "#d97706",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    borderRadius: "8px",
+                                    padding: "10px 20px",
+                                    fontSize: "0.875rem",
+                                    fontWeight: 700,
+                                    cursor: isTesting ? "not-allowed" : "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                }}
+                            >
+                                {isTesting ? "Executing Dispatch Test..." : "🧪 Send Test Email & WhatsApp Notice"}
                             </button>
                         </div>
                     )}
