@@ -38,65 +38,84 @@ export async function markAllAsRead(req: Request, res: Response) {
 
 export async function sendWhatsAppTestNotification(req: Request, res: Response) {
     const user = (req as AuthenticatedRequest).user;
-    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+    if (!user) {
+        return res.status(401).json({
+            success: false,
+            message: "Authentication required. Please log in with a valid JWT token.",
+        });
+    }
 
-    const { recipientNumber, message, templateName, organizationId } = req.body;
+    const { phoneNumber, recipientNumber, message, templateName, organizationId, languageCode, components } = req.body;
+    const targetPhone = phoneNumber || recipientNumber;
 
-    if (!recipientNumber) {
+    if (!targetPhone) {
         return res.status(400).json({
             success: false,
-            message: "Recipient phone number ('recipientNumber') is required.",
+            message: "Recipient phone number ('phoneNumber') is required.",
+            error: {
+                code: "MISSING_PHONE_NUMBER",
+                message: "Please provide a valid recipient phone number in 'phoneNumber'.",
+            },
         });
     }
 
-    // Membership check if organizationId provided
+    // Role-based Access Control (RBAC): Restricted to Owner/Admin/Manager roles
+    const Membership = (await import("../../models/Membership.js")).default;
+    const membershipQuery: Record<string, any> = {
+        userId: user.userId,
+        status: "ACTIVE",
+        role: { $in: ["OWNER", "ADMIN", "MANAGER"] },
+    };
     if (organizationId) {
-        const Membership = (await import("../../models/Membership.js")).default;
-        const membership = await Membership.findOne({
-            userId: user.userId,
-            organizationId,
-            status: "ACTIVE",
-            role: { $in: ["OWNER", "ADMIN", "MANAGER"] },
-        });
-
-        if (!membership) {
-            return res.status(403).json({
-                success: false,
-                message: "Unauthorized: You do not have permission to send WhatsApp notifications for this organization.",
-            });
-        }
+        membershipQuery.organizationId = organizationId;
     }
 
-    const { sendWhatsAppTextMessage, sendWhatsAppTemplateMessage } = await import("../../services/whatsapp.provider.js");
+    const authorizedMembership = await Membership.findOne(membershipQuery);
+
+    if (!authorizedMembership) {
+        return res.status(403).json({
+            success: false,
+            message: "Access Denied: Only property Owners, Administrators, and Managers are authorized to dispatch WhatsApp messages.",
+            error: {
+                code: "FORBIDDEN_ROLE",
+                message: "User does not hold an OWNER, ADMIN, or MANAGER role.",
+            },
+        });
+    }
+
+    const { sendTextMessage, sendTemplateMessage } = await import("../../services/whatsapp.service.js");
 
     let result;
     if (templateName) {
-        result = await sendWhatsAppTemplateMessage({
-            to: recipientNumber,
-            templateName,
-            languageCode: req.body.languageCode || "en_US",
-            components: req.body.components || [],
+        result = await sendTemplateMessage(targetPhone, templateName, {
+            languageCode: languageCode || "en_US",
+            components: components || [],
+            organizationId,
         });
     } else {
-        const textMessage = message || "Hello from NestPay! This is a test WhatsApp Business notification.";
-        result = await sendWhatsAppTextMessage({
-            to: recipientNumber,
-            message: textMessage,
+        const textContent = message || "Hello from NESTPAY WhatsApp integration!";
+        result = await sendTextMessage(targetPhone, textContent, {
+            organizationId,
         });
     }
 
     if (!result.success) {
         return res.status(400).json({
             success: false,
-            message: result.error || "Failed to send WhatsApp message.",
-            details: result.metaResponse || null,
+            message: result.error?.message || "Failed to send WhatsApp message.",
+            error: result.error || {
+                code: "META_DISPATCH_FAILED",
+                message: "Failed to dispatch WhatsApp message via Meta Cloud API.",
+            },
         });
     }
 
     return res.status(200).json({
         success: true,
-        message: `WhatsApp test message dispatched to ${recipientNumber} successfully.`,
-        messageId: result.messageId,
+        message: "WhatsApp message sent successfully",
+        data: {
+            messageId: result.messageId,
+        },
     });
 }
 
