@@ -16,6 +16,7 @@ import InvoiceLogsSection from "./InvoiceLogsSection";
 import ReminderScheduleConfig from "./ReminderScheduleConfig";
 import MarkPaidModal from "./MarkPaidModal";
 import UnitChatModule from "@/features/chat/components/UnitChatModule";
+import ManualWhatsAppModal from "@/features/organization/components/ManualWhatsAppModal";
 
 interface UnitDetailPageProps {
     orgId: string;
@@ -96,10 +97,18 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
     const [isScheduleConfigOpen, setIsScheduleConfigOpen] = useState<boolean>(false);
     const [logsRefreshKey, setLogsRefreshKey] = useState<number>(0);
 
+    // WhatsApp Manual Reminder Modal State
+    const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState<boolean>(false);
+
     // Payment establishment states
     const [utilityItems, setUtilityItems] = useState<UtilityItem[]>([]);
-    const [dueDate, setDueDate] = useState<string>("2026-09-05");
-    const [billingMonth, setBillingMonth] = useState<string>("August 2026");
+    const [dueDate, setDueDate] = useState<string>(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-10`;
+    });
+    const [billingMonth, setBillingMonth] = useState<string>(() =>
+        new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    );
     const [billSuccessMsg, setBillSuccessMsg] = useState<string | null>(null);
     const [isBillEstablished, setIsBillEstablished] = useState<boolean>(false);
 
@@ -126,6 +135,17 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
                 setInvoiceData(res.data.invoice);
                 setScheduleConfig(res.data.schedule);
                 setIsBillEstablished(Boolean(res.data.invoice.isEstablished));
+                if (res.data.invoice.billingPeriod) {
+                    setBillingMonth(res.data.invoice.billingPeriod);
+                }
+                if (res.data.invoice.dueDate) {
+                    try {
+                        const parsed = new Date(res.data.invoice.dueDate);
+                        if (!isNaN(parsed.getTime())) {
+                            setDueDate(parsed.toISOString().split("T")[0]);
+                        }
+                    } catch {}
+                }
                 if (res.data.invoice.notes) {
                     setAdjustmentNotes(res.data.invoice.notes);
                 }
@@ -216,14 +236,28 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
             if (res.success) {
                 const wasAlreadyEstablished = isBillEstablished;
                 setIsBillEstablished(true);
-                setBillSuccessMsg(
-                    wasAlreadyEstablished
-                        ? `Monthly bill of ₹${calculatedTotal.toLocaleString()} for ${billingMonth} updated successfully! Revised payment demand dispatched to tenant(s).`
-                        : `Monthly bill of ₹${calculatedTotal.toLocaleString()} for ${billingMonth} established successfully! Multi-channel payment demand dispatched to tenant(s).`
-                );
+                const dispatchRes = (res.data as any)?.dispatchRes;
+                const isBusAcc = dispatchRes?.isBusinessAccount;
+
+                if (isBusAcc) {
+                    setBillSuccessMsg(
+                        wasAlreadyEstablished
+                            ? `Monthly bill of ₹${calculatedTotal.toLocaleString()} for ${billingMonth} updated! Automated WhatsApp notice dispatched, and manual action is also logged.`
+                            : `Monthly bill of ₹${calculatedTotal.toLocaleString()} for ${billingMonth} established! Automated WhatsApp notice dispatched, and manual action is also logged.`
+                    );
+                } else {
+                    setBillSuccessMsg(
+                        wasAlreadyEstablished
+                            ? `Monthly bill updated! Organization uses Personal WhatsApp. Please send the reminder manually via the popup below.`
+                            : `Monthly bill established! Organization uses Personal WhatsApp. Please send the reminder manually via the popup below.`
+                    );
+                    // Automatically pop open Manual WhatsApp modal for personal WhatsApp accounts
+                    setIsWhatsAppModalOpen(true);
+                }
+
                 setLogsRefreshKey((k) => k + 1);
                 loadInvoiceData();
-                setTimeout(() => setBillSuccessMsg(null), 5000);
+                setTimeout(() => setBillSuccessMsg(null), 6000);
             } else {
                 setInvoiceError(res.message || "Failed to establish bill.");
             }
@@ -250,6 +284,60 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
                 />
                 <p style={{ margin: 0, fontSize: "0.95rem", fontWeight: 500 }}>Loading unit details...</p>
                 <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+            </div>
+        );
+    }
+
+    // Role-based tenant isolation: verify that tenant is an occupant of this unit
+    const accessLevel = getUnitAccessLevel({
+        user,
+        userRole,
+        targetOrgId: orgId,
+        targetUnitId: unitId,
+        activeUnitId,
+        occupants,
+    });
+
+    if (!isOwnerOrAdmin && (accessLevel === "OTHER_UNIT_RESTRICTED" || accessLevel === "NO_ACCESS")) {
+        return (
+            <div
+                className="fade-in"
+                style={{
+                    backgroundColor: "#ffffff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "16px",
+                    padding: "64px 24px",
+                    textAlign: "center",
+                    maxWidth: "520px",
+                    margin: "40px auto",
+                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.04)",
+                }}
+            >
+                <div style={{ fontSize: "2.8rem", marginBottom: "16px" }}>🔒</div>
+                <h2 style={{ fontSize: "1.35rem", fontWeight: 800, color: "#0f172a", margin: "0 0 8px" }}>
+                    Access Restricted
+                </h2>
+                <p style={{ color: "#64748b", fontSize: "0.95rem", lineHeight: 1.6, margin: "0 0 24px" }}>
+                    You are not an assigned occupant of this unit. As a resident, you only have access to your own unit.
+                </p>
+                {onBack && (
+                    <button
+                        type="button"
+                        onClick={onBack}
+                        style={{
+                            padding: "10px 22px",
+                            backgroundColor: "#4f46e5",
+                            color: "#ffffff",
+                            borderRadius: "8px",
+                            border: "none",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            fontSize: "0.9rem",
+                        }}
+                    >
+                        ← Back to My Unit
+                    </button>
+                )}
             </div>
         );
     }
@@ -289,15 +377,6 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
         ? Math.round(totalPayableAmount / activeSharingCount)
         : totalPayableAmount;
 
-    // Centralized Access Level Evaluation
-    const accessLevel = getUnitAccessLevel({
-        user,
-        userRole,
-        targetOrgId: orgId,
-        targetUnitId: unitId,
-        activeUnitId,
-        occupants,
-    });
 
     // Helper to safely render string/object values without crashing React
     const formatString = (val: any): string => {
@@ -935,7 +1014,7 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
                                                 Set monthly rent, EB, maintenance, and extra charges for <strong>{billingMonth}</strong> (Unit {unit.unitNumber}).
                                             </p>
                                         </div>
-                                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                                             <span
                                                 style={{
                                                     fontSize: "0.85rem",
@@ -949,6 +1028,27 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
                                             >
                                                 ⏳ UNPAID
                                             </span>
+                                            {/* WhatsApp Reminder Button */}
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsWhatsAppModalOpen(true)}
+                                                style={{
+                                                    backgroundColor: "#25D366",
+                                                    color: "#ffffff",
+                                                    border: "none",
+                                                    borderRadius: "10px",
+                                                    padding: "9px 18px",
+                                                    fontWeight: 800,
+                                                    fontSize: "0.875rem",
+                                                    cursor: "pointer",
+                                                    boxShadow: "0 2px 6px rgba(37, 211, 102, 0.3)",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: "6px",
+                                                }}
+                                            >
+                                                💬 Send WhatsApp Reminder
+                                            </button>
                                             <button
                                                 type="button"
                                                 onClick={() => setIsMarkPaidOpen(true)}
@@ -1728,6 +1828,37 @@ export const UnitDetailPage: React.FC<UnitDetailPageProps> = ({
                                     setTimeout(() => setInvoiceMsg(null), 5000);
                                 }}
                             />
+
+                            {/* Manual WhatsApp Reminder Modal (Module 6) */}
+                            {(() => {
+                                const primaryTenant = occupants.find(
+                                    (o) => !o.familyHeadId || o.occupancyRole === "Family Head" || o.occupancyRole === "Single"
+                                ) || occupants[0];
+                                const formattedDue = invoiceData?.dueDate
+                                    ? new Date(invoiceData.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })
+                                    : "10th of this month";
+                                return (
+                                    <ManualWhatsAppModal
+                                        isOpen={isWhatsAppModalOpen}
+                                        onClose={() => setIsWhatsAppModalOpen(false)}
+                                        onSent={() => {
+                                            setLogsRefreshKey((k) => k + 1);
+                                        }}
+                                        orgId={orgId}
+                                        unitId={unitId}
+                                        unitNumber={unit.unitNumber}
+                                        tenantName={primaryTenant?.name || "Tenant"}
+                                        tenantPhone={primaryTenant?.phone || ""}
+                                        amount={invoiceData?.totalAmount || unit.rentAmount || 0}
+                                        dueDate={formattedDue}
+                                        orgName={
+                                            (typeof activeMembership?.organizationId === "object"
+                                                ? (activeMembership?.organizationId as any)?.name
+                                                : null) || "NestPay Property"
+                                        }
+                                    />
+                                );
+                            })()}
                         </div>
                     )}
                 </div>

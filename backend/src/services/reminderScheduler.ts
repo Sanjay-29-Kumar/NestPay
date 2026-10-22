@@ -96,6 +96,37 @@ export async function runDailyRentReminders(): Promise<BatchReminderResult> {
                     isRead: false,
                 }).catch(() => {});
             }
+
+            // Create Owner Action Notification
+            try {
+                const Membership = (await import("../models/Membership.js")).default;
+                const ownerMemberships = await Membership.find({
+                    organizationId: customer.organizationId,
+                    role: { $in: ["OWNER", "ADMIN"] },
+                    status: "ACTIVE",
+                });
+                for (const om of ownerMemberships) {
+                    await Notification.create({
+                        userId: om.userId,
+                        type: "MANUAL_WHATSAPP_ACTION",
+                        title: `💬 Action Required: Send WhatsApp Rent Reminder (${reminderEvent})`,
+                        message: `Scheduled reminder ready for ${customer.name} (Unit ${unitNumber}, ₹${rentAmount}). Tap to preview and send via WhatsApp.`,
+                        organizationId: customer.organizationId as any,
+                        unitId: customer.unitId as any,
+                        metadata: {
+                            tenantName: customer.name,
+                            tenantPhone: customer.phone,
+                            rentAmount,
+                            unitNumber,
+                            dueDate,
+                            prefilledMessage: reminderMessage,
+                            reminderEvent,
+                            actionStatus: "PENDING",
+                        },
+                        isRead: false,
+                    }).catch(() => {});
+                }
+            } catch {}
         } else {
             totalFailed++;
             results.push({

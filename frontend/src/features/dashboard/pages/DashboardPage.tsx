@@ -30,6 +30,7 @@ import UsersSection from "@/features/organization/components/UsersSection";
 import PaymentsSection from "@/features/organization/components/PaymentsSection";
 import SenderSettingsSection from "@/features/organization/components/SenderSettingsSection";
 import UnitChatModule from "@/features/chat/components/UnitChatModule";
+import ManualWhatsAppModal from "@/features/organization/components/ManualWhatsAppModal";
 
 export type DashboardTab =
     | "organization"
@@ -107,6 +108,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
     const [notificationsList, setNotificationsList] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState<number>(0);
 
+    // WhatsApp Modal state for notification area
+    const [selectedWhatsAppNotif, setSelectedWhatsAppNotif] = useState<any | null>(null);
+    const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+
     const loadNotifications = async () => {
         try {
             const res = await getNotificationsApi();
@@ -142,17 +147,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
         }
     };
 
-    const handleSelectTab = (tab: DashboardTab) => {
-        setActiveTab(tab);
-        if (tab === "units") {
-            navigate(`/org/${orgId}/units`);
-        } else if (tab === "payment") {
-            navigate(`/org/${orgId}/payment`);
-        } else {
-            navigate(`/org/${orgId}/dashboard?tab=${tab}`);
-        }
-    };
-
     // Find current active organization & membership
     const activeMembership = memberships.find((m) => {
         const org = typeof m.organizationId === "object" ? m.organizationId : null;
@@ -166,6 +160,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
     const orgName = activeOrg?.name || "Organization Workspace";
     const userRole = activeMembership?.role || "MEMBER";
     const isOwnerOrAdmin = ["OWNER", "ADMIN", "MANAGER"].includes(userRole);
+
+    // Role-based protection: if tenant navigates to owner-only tabs, redirect to units tab
+    useEffect(() => {
+        if (memberships.length > 0 && !isOwnerOrAdmin) {
+            if (activeTab === "organization" || activeTab === "users" || activeTab === "settings") {
+                setActiveTab("units");
+                navigate(`/org/${orgId}/units`, { replace: true });
+            }
+        }
+    }, [memberships.length, isOwnerOrAdmin, activeTab, orgId, navigate]);
+
+    const handleSelectTab = (tab: DashboardTab) => {
+        if (!isOwnerOrAdmin && (tab === "organization" || tab === "users" || tab === "settings")) {
+            return;
+        }
+        setActiveTab(tab);
+        if (tab === "units") {
+            navigate(`/org/${orgId}/units`);
+        } else if (tab === "payment") {
+            navigate(`/org/${orgId}/payment`);
+        } else {
+            navigate(`/org/${orgId}/dashboard?tab=${tab}`);
+        }
+    };
 
     // Helper for formatting roles
     const formatRoleInfo = (role: string) => {
@@ -206,22 +224,36 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
     const initials = getInitials(user?.name || user?.fullName || user?.displayName, user?.email);
     const userPhoto = user?.photo;
 
-    // Navigation items definitions
-    const topNavItems: Array<{ id: DashboardTab; label: string; icon: React.ReactNode }> = [
-        { id: "organization", label: "Organization", icon: <OrganizationIcon size={20} /> },
-        { id: "units", label: "Units", icon: <UnitIcon size={20} /> },
-        { id: "users", label: "Users", icon: <MembersIcon size={20} /> },
-        { id: "payment", label: "Payment", icon: <PaymentIcon size={20} /> },
-        { id: "invoice", label: "Invoice", icon: <InvoiceIcon size={20} /> },
-    ];
+    // Role-based navigation items:
+    // If Owner/Admin/Manager -> Show full Owner Dashboard tabs (Organization, Units, Users, Payment, Invoice, Settings)
+    // If Tenant/Member -> Show only Tenant Dashboard tabs (My Unit, My Payments, My Invoices, Unit Chat, Notifications, Profile)
+    const topNavItems: Array<{ id: DashboardTab; label: string; icon: React.ReactNode }> = isOwnerOrAdmin
+        ? [
+              { id: "organization", label: "Organization", icon: <OrganizationIcon size={20} /> },
+              { id: "units", label: "Units", icon: <UnitIcon size={20} /> },
+              { id: "users", label: "Users", icon: <MembersIcon size={20} /> },
+              { id: "payment", label: "Payment", icon: <PaymentIcon size={20} /> },
+              { id: "invoice", label: "Invoice", icon: <InvoiceIcon size={20} /> },
+          ]
+        : [
+              { id: "units", label: "My Unit", icon: <UnitIcon size={20} /> },
+              { id: "payment", label: "My Payments", icon: <PaymentIcon size={20} /> },
+              { id: "invoice", label: "My Invoices", icon: <InvoiceIcon size={20} /> },
+          ];
 
-    // Bottom section: Settings, Notification, Chat, Profile (bottom-most)
-    const bottomNavItems: Array<{ id: DashboardTab; label: string; icon: React.ReactNode }> = [
-        { id: "settings", label: "Settings", icon: <SettingsIcon size={20} /> },
-        { id: "notification", label: "Notification", icon: <NotificationIcon size={20} /> },
-        { id: "chat", label: "Chat", icon: <ChatIcon size={20} /> },
-        { id: "profile", label: "Profile", icon: <ProfileIcon size={20} /> },
-    ];
+    // Bottom section: Settings (Owners only), Notification, Chat, Profile
+    const bottomNavItems: Array<{ id: DashboardTab; label: string; icon: React.ReactNode }> = isOwnerOrAdmin
+        ? [
+              { id: "settings", label: "Settings", icon: <SettingsIcon size={20} /> },
+              { id: "notification", label: "Notification", icon: <NotificationIcon size={20} /> },
+              { id: "chat", label: "Chat", icon: <ChatIcon size={20} /> },
+              { id: "profile", label: "Profile", icon: <ProfileIcon size={20} /> },
+          ]
+        : [
+              { id: "notification", label: "Notification", icon: <NotificationIcon size={20} /> },
+              { id: "chat", label: "Unit Chat", icon: <ChatIcon size={20} /> },
+              { id: "profile", label: "Profile", icon: <ProfileIcon size={20} /> },
+          ];
 
     return (
         <div style={{ minHeight: "100vh", backgroundColor: "#f8fafc", display: "flex", flexDirection: "column" }}>
@@ -583,37 +615,50 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
 
                     <div style={{ maxWidth: "950px", margin: "0 auto" }}>
 
-                        {/* MODULE 1: Organization */}
+                        {/* MODULE 1: Organization (Owner & Admin Only) */}
                         {activeTab === "organization" && (
-                            <div className="fade-in" style={cardStyle}>
-                                <div style={headerStyle}>
-                                    <h2 style={titleStyle}>Organization — Overview</h2>
-                                    <p style={subtitleStyle}>General organization settings, configuration, and workspace status.</p>
-                                </div>
-                                <div style={bodyStyle}>
-                                    <div style={infoGridStyle}>
-                                        <div style={infoCardStyle}>
-                                            <span style={infoLabelStyle}>Organization Name</span>
-                                            <span style={infoValueStyle}>{orgName}</span>
-                                        </div>
-                                        <div style={infoCardStyle}>
-                                            <span style={infoLabelStyle}>Organization ID</span>
-                                            <code style={{ ...infoValueStyle, color: "#4f46e5" }}>{orgId || "N/A"}</code>
-                                        </div>
-                                        <div style={infoCardStyle}>
-                                            <span style={infoLabelStyle}>Organization Type</span>
-                                            <span style={infoValueStyle}>{activeOrg?.organizationType || "APARTMENT"}</span>
-                                        </div>
-                                        <div style={infoCardStyle}>
-                                            <span style={infoLabelStyle}>Your Member Role</span>
-                                            <span style={{ ...infoValueStyle, color: roleInfo.color }}>{roleInfo.label}</span>
-                                        </div>
+                            isOwnerOrAdmin ? (
+                                <div className="fade-in" style={cardStyle}>
+                                    <div style={headerStyle}>
+                                        <h2 style={titleStyle}>Organization — Overview</h2>
+                                        <p style={subtitleStyle}>General organization settings, configuration, and workspace status.</p>
                                     </div>
-                                    <p style={placeholderTextStyle}>
-                                        🏢 Organization details module placeholder. Full management features will be built in the next step.
-                                    </p>
+                                    <div style={bodyStyle}>
+                                        <div style={infoGridStyle}>
+                                            <div style={infoCardStyle}>
+                                                <span style={infoLabelStyle}>Organization Name</span>
+                                                <span style={infoValueStyle}>{orgName}</span>
+                                            </div>
+                                            <div style={infoCardStyle}>
+                                                <span style={infoLabelStyle}>Organization ID</span>
+                                                <code style={{ ...infoValueStyle, color: "#4f46e5" }}>{orgId || "N/A"}</code>
+                                            </div>
+                                            <div style={infoCardStyle}>
+                                                <span style={infoLabelStyle}>Organization Type</span>
+                                                <span style={infoValueStyle}>{activeOrg?.organizationType || "APARTMENT"}</span>
+                                            </div>
+                                            <div style={infoCardStyle}>
+                                                <span style={infoLabelStyle}>Your Member Role</span>
+                                                <span style={{ ...infoValueStyle, color: roleInfo.color }}>{roleInfo.label}</span>
+                                            </div>
+                                        </div>
+                                        <p style={placeholderTextStyle}>
+                                            🏢 Organization overview & management console.
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="fade-in" style={{ backgroundColor: "#ffffff", borderRadius: "16px", border: "1px solid #e2e8f0", padding: "64px 24px", textAlign: "center" }}>
+                                    <div style={{ fontSize: "2.8rem", marginBottom: "16px" }}>🔒</div>
+                                    <h3 style={{ fontSize: "1.3rem", fontWeight: 800, color: "#0f172a" }}>Owner Access Only</h3>
+                                    <p style={{ color: "#64748b", fontSize: "0.95rem", maxWidth: "420px", margin: "8px auto 20px" }}>
+                                        The Organization management view is reserved for property owners and managers.
+                                    </p>
+                                    <button onClick={() => handleSelectTab("units")} style={{ padding: "10px 22px", backgroundColor: "#4f46e5", color: "#fff", borderRadius: "8px", border: "none", fontWeight: 700, cursor: "pointer" }}>
+                                        Go to My Unit →
+                                    </button>
+                                </div>
+                            )
                         )}
 
                         {/* MODULE 2: Units (Full Interactive Module: List, Add Unit, Unit Details Hub, Edit Unit, Add User to Unit) */}
@@ -695,12 +740,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
                             </>
                         )}
 
-                        {/* MODULE 3: Users */}
+                        {/* MODULE 3: Users (Owner & Admin Only) */}
                         {activeTab === "users" && orgId && (
-                            <UsersSection
-                                orgId={orgId}
-                                onGoToUnit={(targetUnitId) => navigate(`/org/${orgId}/units/${targetUnitId}`)}
-                            />
+                            isOwnerOrAdmin ? (
+                                <UsersSection
+                                    orgId={orgId}
+                                    onGoToUnit={(targetUnitId) => navigate(`/org/${orgId}/units/${targetUnitId}`)}
+                                />
+                            ) : (
+                                <div className="fade-in" style={{ backgroundColor: "#ffffff", borderRadius: "16px", border: "1px solid #e2e8f0", padding: "64px 24px", textAlign: "center" }}>
+                                    <div style={{ fontSize: "2.8rem", marginBottom: "16px" }}>🔒</div>
+                                    <h3 style={{ fontSize: "1.3rem", fontWeight: 800, color: "#0f172a" }}>Owner Access Only</h3>
+                                    <p style={{ color: "#64748b", fontSize: "0.95rem", maxWidth: "420px", margin: "8px auto 20px" }}>
+                                        The user directory is reserved for property owners and managers.
+                                    </p>
+                                    <button onClick={() => handleSelectTab("units")} style={{ padding: "10px 22px", backgroundColor: "#4f46e5", color: "#fff", borderRadius: "8px", border: "none", fontWeight: 700, cursor: "pointer" }}>
+                                        Go to My Unit →
+                                    </button>
+                                </div>
+                            )
                         )}
 
                         {/* MODULE 4: Payment */}
@@ -730,21 +788,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
                             </div>
                         )}
 
-                        {/* MODULE 6: Settings */}
+                        {/* MODULE 6: Settings (Owner & Admin Only) */}
                         {activeTab === "settings" && (
-                            <div className="fade-in" style={cardStyle}>
-                                <div style={headerStyle}>
-                                    <h2 style={titleStyle}>Settings — Workspace & Notification Sender Identity</h2>
-                                    <p style={subtitleStyle}>Configure organization email display identities and custom WhatsApp Business credentials.</p>
+                            isOwnerOrAdmin ? (
+                                <div className="fade-in" style={cardStyle}>
+                                    <div style={headerStyle}>
+                                        <h2 style={titleStyle}>Settings — Workspace & Notification Sender Identity</h2>
+                                        <p style={subtitleStyle}>Configure organization email display identities and custom WhatsApp Business credentials.</p>
+                                    </div>
+                                    <div style={bodyStyle}>
+                                        {orgId ? (
+                                            <SenderSettingsSection orgId={orgId} isOwnerOrAdmin={isOwnerOrAdmin} />
+                                        ) : (
+                                            <div style={{ color: "#64748b" }}>Please select an organization workspace.</div>
+                                        )}
+                                    </div>
                                 </div>
-                                <div style={bodyStyle}>
-                                    {orgId ? (
-                                        <SenderSettingsSection orgId={orgId} isOwnerOrAdmin={isOwnerOrAdmin} />
-                                    ) : (
-                                        <div style={{ color: "#64748b" }}>Please select an organization workspace.</div>
-                                    )}
+                            ) : (
+                                <div className="fade-in" style={{ backgroundColor: "#ffffff", borderRadius: "16px", border: "1px solid #e2e8f0", padding: "64px 24px", textAlign: "center" }}>
+                                    <div style={{ fontSize: "2.8rem", marginBottom: "16px" }}>🔒</div>
+                                    <h3 style={{ fontSize: "1.3rem", fontWeight: 800, color: "#0f172a" }}>Owner Access Only</h3>
+                                    <p style={{ color: "#64748b", fontSize: "0.95rem", maxWidth: "420px", margin: "8px auto 20px" }}>
+                                        Workspace configuration and WhatsApp credentials are restricted to property owners.
+                                    </p>
+                                    <button onClick={() => handleSelectTab("units")} style={{ padding: "10px 22px", backgroundColor: "#4f46e5", color: "#fff", borderRadius: "8px", border: "none", fontWeight: 700, cursor: "pointer" }}>
+                                        Go to My Unit →
+                                    </button>
                                 </div>
-                            </div>
+                            )
                         )}
 
                         {/* MODULE 7: Notification */}
@@ -752,41 +823,49 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
                             <div className="fade-in" style={cardStyle}>
                                 <div style={headerStyle}>
                                     <h2 style={titleStyle}>Notifications & Activity Alerts</h2>
-                                    <p style={subtitleStyle}>System announcements, tenant requests, and workspace updates.</p>
+                                    <p style={subtitleStyle}>System announcements, WhatsApp reminder prompts, tenant requests, and workspace updates.</p>
                                 </div>
                                 <div style={bodyStyle}>
                                     {notificationsList.length === 0 ? (
                                         <div style={emptyBoxStyle}>
+                                            <div style={{ fontSize: "2.5rem", marginBottom: "12px" }}>🔔</div>
                                             <h3 style={{ margin: "0 0 6px", fontSize: "1.1rem", fontWeight: 700, color: "#0f172a" }}>No notifications yet</h3>
                                             <p style={{ margin: 0, fontSize: "0.9rem", color: "#64748b" }}>
-                                                New family member requests, announcements, and activity updates will appear here.
+                                                WhatsApp reminder prompts, family member requests, and activity updates will appear here.
                                             </p>
                                         </div>
                                     ) : (
                                         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                                             {notificationsList.map((item: any) => {
                                                 const isFamilyRequestNotif = item.title?.includes("Family Member Request");
+                                                const isWhatsAppAction = item.type === "MANUAL_WHATSAPP_ACTION";
+                                                const meta = item.metadata || {};
                                                 return (
                                                     <div
                                                         key={item._id}
                                                         style={{
-                                                            backgroundColor: item.isRead ? "#ffffff" : "#f0f5ff",
-                                                            border: item.isRead ? "1px solid #e2e8f0" : "1px solid #c7d2fe",
+                                                            backgroundColor: isWhatsAppAction ? "#f0fdf4" : item.isRead ? "#ffffff" : "#f0f5ff",
+                                                            border: `1px solid ${isWhatsAppAction ? "#86efac" : item.isRead ? "#e2e8f0" : "#c7d2fe"}`,
                                                             borderRadius: "12px",
                                                             padding: "16px 20px",
                                                             display: "flex",
-                                                            alignItems: "center",
-                                                            justifyContent: "space-between",
-                                                            flexWrap: "wrap",
-                                                            gap: "16px",
+                                                            flexDirection: "column",
+                                                            gap: "10px",
                                                         }}
                                                     >
-                                                        <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", flex: 1 }}>
-                                                            <div>
-                                                                <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>
-                                                                    {item.title}
+                                                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                                                            <div style={{ flex: 1 }}>
+                                                                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                                                                    {isWhatsAppAction && (
+                                                                        <span style={{ backgroundColor: "#25D366", color: "#fff", fontSize: "0.65rem", fontWeight: 800, padding: "2px 6px", borderRadius: "4px", textTransform: "uppercase" }}>
+                                                                            WhatsApp Action
+                                                                        </span>
+                                                                    )}
+                                                                    <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>
+                                                                        {item.title}
+                                                                    </div>
                                                                 </div>
-                                                                <div style={{ fontSize: "0.875rem", color: "#334155", marginTop: "3px" }}>
+                                                                <div style={{ fontSize: "0.875rem", color: "#334155" }}>
                                                                     {item.message}
                                                                 </div>
                                                                 <div style={{ fontSize: "0.775rem", color: "#94a3b8", marginTop: "6px" }}>
@@ -795,26 +874,72 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
                                                             </div>
                                                         </div>
 
-                                                        {isFamilyRequestNotif && roleInfo.isOwner && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleSelectTab("users")}
-                                                                style={{
-                                                                    backgroundColor: "#4f46e5",
-                                                                    color: "#ffffff",
-                                                                    border: "none",
-                                                                    borderRadius: "8px",
-                                                                    padding: "9px 18px",
-                                                                    fontWeight: 700,
-                                                                    fontSize: "0.85rem",
-                                                                    cursor: "pointer",
-                                                                    boxShadow: "0 2px 6px rgba(79, 70, 229, 0.25)",
-                                                                    whiteSpace: "nowrap",
-                                                                }}
-                                                            >
-                                                                Review Request →
-                                                            </button>
+                                                        {/* WhatsApp reminder chips */}
+                                                        {isWhatsAppAction && (
+                                                            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                                                                {meta.tenantName && (
+                                                                    <span style={{ fontSize: "0.75rem", backgroundColor: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>👤 {meta.tenantName}</span>
+                                                                )}
+                                                                {meta.unitNumber && (
+                                                                    <span style={{ fontSize: "0.75rem", backgroundColor: "#e0e7ff", color: "#3730a3", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>🏠 Unit {meta.unitNumber}</span>
+                                                                )}
+                                                                {meta.rentAmount && (
+                                                                    <span style={{ fontSize: "0.75rem", backgroundColor: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: "6px", fontWeight: 700 }}>₹{Number(meta.rentAmount).toLocaleString()}</span>
+                                                                )}
+                                                                {meta.dueDate && (
+                                                                    <span style={{ fontSize: "0.75rem", backgroundColor: "#fee2e2", color: "#991b1b", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>Due: {meta.dueDate}</span>
+                                                                )}
+                                                            </div>
                                                         )}
+
+                                                        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                                                            {isWhatsAppAction && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setSelectedWhatsAppNotif(item);
+                                                                        setIsWhatsAppModalOpen(true);
+                                                                    }}
+                                                                    style={{
+                                                                        backgroundColor: "#25D366",
+                                                                        color: "#ffffff",
+                                                                        border: "none",
+                                                                        borderRadius: "8px",
+                                                                        padding: "9px 18px",
+                                                                        fontWeight: 800,
+                                                                        fontSize: "0.85rem",
+                                                                        cursor: "pointer",
+                                                                        display: "flex",
+                                                                        alignItems: "center",
+                                                                        gap: "6px",
+                                                                        boxShadow: "0 2px 6px rgba(37, 211, 102, 0.3)",
+                                                                    }}
+                                                                >
+                                                                    <span>💬</span>
+                                                                    <span>Send via WhatsApp</span>
+                                                                </button>
+                                                            )}
+                                                            {isFamilyRequestNotif && roleInfo.isOwner && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleSelectTab("users")}
+                                                                    style={{
+                                                                        backgroundColor: "#4f46e5",
+                                                                        color: "#ffffff",
+                                                                        border: "none",
+                                                                        borderRadius: "8px",
+                                                                        padding: "9px 18px",
+                                                                        fontWeight: 700,
+                                                                        fontSize: "0.85rem",
+                                                                        cursor: "pointer",
+                                                                        boxShadow: "0 2px 6px rgba(79, 70, 229, 0.25)",
+                                                                        whiteSpace: "nowrap",
+                                                                    }}
+                                                                >
+                                                                    Review Request →
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
@@ -822,6 +947,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ initialTab, unitSu
                                     )}
                                 </div>
                             </div>
+                        )}
+
+                        {/* WhatsApp Modal: Triggered from Notification Tab */}
+                        {selectedWhatsAppNotif && (
+                            <ManualWhatsAppModal
+                                isOpen={isWhatsAppModalOpen}
+                                onClose={() => {
+                                    setIsWhatsAppModalOpen(false);
+                                    setSelectedWhatsAppNotif(null);
+                                }}
+                                onSent={() => {
+                                    loadNotifications();
+                                }}
+                                orgId={typeof selectedWhatsAppNotif.organizationId === "object" ? selectedWhatsAppNotif.organizationId?._id : selectedWhatsAppNotif.organizationId || orgId}
+                                unitId={typeof selectedWhatsAppNotif.unitId === "object" ? selectedWhatsAppNotif.unitId?._id : selectedWhatsAppNotif.unitId}
+                                unitNumber={selectedWhatsAppNotif.metadata?.unitNumber || ""}
+                                tenantName={selectedWhatsAppNotif.metadata?.tenantName || "Tenant"}
+                                tenantPhone={selectedWhatsAppNotif.metadata?.tenantPhone || ""}
+                                amount={selectedWhatsAppNotif.metadata?.rentAmount || 0}
+                                dueDate={selectedWhatsAppNotif.metadata?.dueDate || "10th of this month"}
+                                customMessage={selectedWhatsAppNotif.metadata?.prefilledMessage}
+                                notificationId={selectedWhatsAppNotif._id}
+                            />
                         )}
 
                         {/* MODULE 8: Chat */}

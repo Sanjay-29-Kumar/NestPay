@@ -86,13 +86,13 @@ class InvoiceService {
     /**
      * Get or auto-generate current cycle Invoice for unit
      */
-    async getCurrentInvoice(orgId: string, unitId: string): Promise<IInvoice> {
+    async getCurrentInvoice(orgId: string, unitId: string, customPeriod?: string): Promise<IInvoice> {
         const unit = await Unit.findById(unitId);
         if (!unit) {
             throw new Error("Unit not found.");
         }
 
-        const billingPeriod = this.getBillingPeriod();
+        const billingPeriod = customPeriod || this.getBillingPeriod();
         let invoice = await Invoice.findOne({ unitId, billingPeriod });
 
         if (!invoice) {
@@ -138,8 +138,9 @@ class InvoiceService {
      * Logs dispatch in Payment Reminder Log as "Bill Established"
      */
     async establishBill(orgId: string, unitId: string, dto: EstablishBillDTO) {
-        const invoice = await this.getCurrentInvoice(orgId, unitId);
-        const { utilitiesAmount, totalAmount, notes, dueDate, billingPeriod } = dto;
+        const targetPeriod = dto.billingPeriod || this.getBillingPeriod();
+        const invoice = await this.getCurrentInvoice(orgId, unitId, targetPeriod);
+        const { utilitiesAmount, totalAmount, notes, dueDate } = dto;
 
         const defaultRent = invoice.defaultRentAmount || 0;
         const calculatedTotal =
@@ -149,12 +150,17 @@ class InvoiceService {
 
         invoice.totalAmount = calculatedTotal;
         invoice.isEstablished = true;
+        invoice.billingPeriod = targetPeriod;
         if (utilitiesAmount !== undefined) {
             invoice.overrideAmount = utilitiesAmount;
         }
         if (notes !== undefined) invoice.notes = notes;
-        if (dueDate) invoice.dueDate = new Date(dueDate);
-        if (billingPeriod) invoice.billingPeriod = billingPeriod;
+        if (dueDate) {
+            const parsed = new Date(dueDate);
+            if (!isNaN(parsed.getTime())) {
+                invoice.dueDate = parsed;
+            }
+        }
         await invoice.save();
 
         // Sync Rent model if exists

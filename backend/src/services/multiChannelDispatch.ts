@@ -27,6 +27,8 @@ export interface DispatchResult {
     totalRecipients: number;
     dispatchedCount: number;
     failedCount: number;
+    isBusinessAccount?: boolean;
+    requiresManualWhatsApp?: boolean;
     details: Array<{
         name: string;
         phone: string;
@@ -74,6 +76,8 @@ export async function dispatchMultiChannelNotification(
             totalRecipients: 0,
             dispatchedCount: 0,
             failedCount: 0,
+            isBusinessAccount: false,
+            requiresManualWhatsApp: false,
             details: [],
         };
     }
@@ -99,6 +103,19 @@ export async function dispatchMultiChannelNotification(
         organizationId,
         status: "ACTIVE",
     });
+
+    // Check if Business Account:
+    // Organization has configured WhatsApp Cloud API (or system has global Meta credentials configured)
+    const isBusinessAccount = Boolean(
+        (orgWhatsAppConfig &&
+            orgWhatsAppConfig.status === "ACTIVE" &&
+            orgWhatsAppConfig.phoneNumberId &&
+            orgWhatsAppConfig.businessAccountId) ||
+        (process.env.WHATSAPP_PHONE_NUMBER_ID &&
+            process.env.WHATSAPP_BUSINESS_ACCOUNT_ID &&
+            process.env.WHATSAPP_ACCESS_TOKEN &&
+            (!orgWhatsAppConfig || orgWhatsAppConfig.status === "ACTIVE"))
+    );
 
     const formattedDueDate =
         typeof dueDate === "string"
@@ -155,8 +172,11 @@ export async function dispatchMultiChannelNotification(
         const ownerEmail = org?.emailSenderConfig?.senderEmail || org?.email;
         const replyTo = org?.emailSenderConfig?.replyToEmail || ownerEmail;
 
-        // 1. WhatsApp Dispatch
-        if (customer.phone) {
+        // 1. WhatsApp Dispatch:
+        // Rule:
+        // - If Business Account: automated Meta Cloud API call is performed.
+        // - If NOT a Business Account: automated API call is skipped (manual dispatch required).
+        if (isBusinessAccount && customer.phone) {
             const finalWhatsAppMessage = orgWhatsAppConfig
                 ? bodyMessage
                 : `Sent on behalf of ${ownerName} — ${orgName}:\n\n${bodyMessage}`;
@@ -165,7 +185,9 @@ export async function dispatchMultiChannelNotification(
                 to: customer.phone,
                 message: finalWhatsAppMessage,
                 phoneNumberId: orgWhatsAppConfig?.phoneNumberId,
-            }).catch(() => {});
+            }).catch((err) => {
+                console.error("Automated WhatsApp dispatch error:", err);
+            });
         }
 
         // 2. In-App Notification
@@ -191,6 +213,56 @@ export async function dispatchMultiChannelNotification(
             }).catch(() => {});
         }
 
+        // 4. Notify Organization Owner & Admins in In-App Notification Area with WhatsApp Action
+        // Rule:
+        // - If Business Account: BOTH has to be done (automated dispatched above AND owner gets manual action)
+        // - If NOT Business Account: Manual MUST happen (owner is notified to send via WhatsApp Web/Desktop)
+        if (messageType === "REMINDER" || messageType === "AMOUNT_SET" || messageType === "MANUAL_ISSUE") {
+            try {
+                const Membership = (await import("../models/Membership.js")).default;
+                const ownerMemberships = await Membership.find({
+                    organizationId,
+                    role: { $in: ["OWNER", "ADMIN"] },
+                    status: "ACTIVE",
+                });
+                const ownerUserIds = new Set<string>();
+                if (org?.ownerId) ownerUserIds.add(String(org.ownerId));
+                for (const om of ownerMemberships) {
+                    if (om.userId) ownerUserIds.add(String(om.userId));
+                }
+
+                const actionSubTitle = isBusinessAccount
+                    ? `[Automated & Manual] Reminder queued for ${customer.name} (Unit ${unit.unitNumber}, ₹${amount.toLocaleString()}). Tap to preview and re-send via WhatsApp.`
+                    : `[Personal WhatsApp] Reminder ready for ${customer.name} (Unit ${unit.unitNumber}, ₹${amount.toLocaleString()}). Tap to preview and send via WhatsApp.`;
+
+                for (const ownerUid of ownerUserIds) {
+                    await Notification.create({
+                        userId: ownerUid,
+                        type: "MANUAL_WHATSAPP_ACTION",
+                        title: `💬 WhatsApp Reminder: Unit ${unit.unitNumber} (${customer.name})`,
+                        message: actionSubTitle,
+                        organizationId,
+                        unitId,
+                        metadata: {
+                            tenantName: customer.name,
+                            tenantPhone: customer.phone,
+                            rentAmount: amount,
+                            unitNumber: unit.unitNumber,
+                            dueDate: formattedDueDate,
+                            billingPeriod,
+                            prefilledMessage: bodyMessage,
+                            dayRule: dayRuleText,
+                            actionStatus: "PENDING",
+                            isBusinessAccount,
+                        },
+                        isRead: false,
+                    }).catch(() => {});
+                }
+            } catch {
+                // non-blocking
+            }
+        }
+
         if (customerSuccess) dispatchedCount++;
         else failedCount++;
 
@@ -209,6 +281,10 @@ export async function dispatchMultiChannelNotification(
         role: c.occupancyRole || "Tenant",
     }));
 
+    const activeChannels = isBusinessAccount
+        ? ["WhatsApp (Auto & Manual)", "In-App", "Email"]
+        : ["WhatsApp (Manual)", "In-App", "Email"];
+
     // Auto-populate logs under Invoice Section
     if (messageType === "PAYMENT_CONFIRMED") {
         await PaymentConfirmationLog.create({
@@ -217,7 +293,7 @@ export async function dispatchMultiChannelNotification(
             invoiceId,
             paymentId,
             sentAt: new Date(),
-            channels: ["WhatsApp", "In-App", "Email"],
+            channels: activeChannels,
             recipients: logRecipients,
             amount,
             paymentMode,
@@ -230,14 +306,14 @@ export async function dispatchMultiChannelNotification(
             unitId,
             invoiceId,
             sentAt: new Date(),
-            channels: ["WhatsApp", "In-App", "Email"],
+            channels: activeChannels,
             recipients: logRecipients,
             dayRule: dayRuleText,
             messageType,
             amount,
             dueDate: typeof dueDate === "string" ? new Date() : dueDate,
             status: failedCount === 0 ? "SUCCESS" : dispatchedCount > 0 ? "PARTIAL" : "FAILED",
-            details: `Dispatched multi-channel notice (${dayRuleText}) to ${targetCustomers.length} recipient(s).`,
+            details: `Dispatched multi-channel notice (${dayRuleText}) to ${targetCustomers.length} recipient(s). Channel mode: ${isBusinessAccount ? "Automated & Manual" : "Personal WhatsApp (Manual)"}.`,
         });
     }
 
@@ -246,6 +322,8 @@ export async function dispatchMultiChannelNotification(
         totalRecipients: targetCustomers.length,
         dispatchedCount,
         failedCount,
+        isBusinessAccount,
+        requiresManualWhatsApp: !isBusinessAccount,
         details: dispatchDetails,
     };
 }

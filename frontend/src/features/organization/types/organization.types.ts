@@ -45,6 +45,20 @@ export interface NotificationItem {
     message: string;
     type: string;
     invitationToken?: string;
+    organizationId?: string | { _id: string; name: string };
+    unitId?: string | { _id: string; unitNumber: string };
+    metadata?: {
+        tenantName?: string;
+        tenantPhone?: string;
+        rentAmount?: number | string;
+        unitNumber?: string;
+        dueDate?: string;
+        billingPeriod?: string;
+        prefilledMessage?: string;
+        reminderEvent?: string;
+        dayRule?: string;
+        actionStatus?: "PENDING" | "SENT";
+    };
     isRead: boolean;
     createdAt: string;
 }

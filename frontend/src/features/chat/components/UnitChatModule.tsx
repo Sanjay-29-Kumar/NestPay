@@ -89,10 +89,10 @@ export const UnitChatModule: React.FC<UnitChatModuleProps> = ({
 
         const currentUserIdStr = String((user as any)?.id || user?._id || "");
 
-        // Establish Socket.io connection
+        // Establish Socket.io connection to backend (port 5000)
         const backendUrl = import.meta.env.VITE_API_URL
             ? new URL(import.meta.env.VITE_API_URL).origin
-            : window.location.origin;
+            : "http://localhost:5000";
 
         const socket = io(backendUrl, {
             transports: ["websocket", "polling"],
@@ -484,7 +484,7 @@ export const UnitChatModule: React.FC<UnitChatModuleProps> = ({
                                                 {msg.attachments.map((att, idx) => {
                                                     const fullUrl = att.url.startsWith("http")
                                                         ? att.url
-                                                        : `${import.meta.env.VITE_API_URL ? new URL(import.meta.env.VITE_API_URL).origin : window.location.origin}${att.url}`;
+                                                        : `${import.meta.env.VITE_API_URL ? new URL(import.meta.env.VITE_API_URL).origin : "http://localhost:5000"}${att.url}`;
 
                                                     return (
                                                         <div

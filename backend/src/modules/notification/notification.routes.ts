@@ -8,6 +8,7 @@ import {
     triggerBatchCronReminders,
     sendInAppMessage,
     getUnitInAppMessages,
+    logManualWhatsAppSend,
 } from "./notification.controller.js";
 import { authenticate } from "../../middleware/authenticate.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
@@ -32,6 +33,9 @@ router.post(
     validateRequest(sendWhatsAppTestSchema),
     sendWhatsAppTestNotification
 );
+
+// Manual WhatsApp Send Audit Logger Endpoint
+router.post("/whatsapp/log-manual-send", authenticate, logManualWhatsAppSend);
 
 // WhatsApp Rent Reminder Dispatcher Endpoint
 router.post("/whatsapp/send-rent-reminder", authenticate, sendRentReminderNotification);

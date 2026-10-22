@@ -84,6 +84,30 @@ export async function getSingleUnit(userId: string, orgId: string, unitId: strin
         return { success: false, message: "Unauthorized." };
     }
 
+    // For Tenants / Members, ensure they are an assigned occupant of this unit
+    if (membership.role === "TENANT" || membership.role === "MEMBER") {
+        const Customer = (await import("../../models/Customer.js")).default;
+        const User = (await import("../../models/User.js")).default;
+        const userObj = await User.findById(userId);
+        const userEmail = userObj?.email?.toLowerCase();
+        const userPhone = userObj?.phone;
+
+        const isOccupant = await Customer.exists({
+            organizationId: orgId,
+            unitId,
+            $or: [
+                { userId },
+                ...(userEmail ? [{ email: userEmail }] : []),
+                ...(userPhone ? [{ phone: userPhone }] : []),
+            ],
+            status: "ACTIVE",
+        });
+
+        if (!isOccupant) {
+            return { success: false, message: "Unauthorized. You only have access to your own unit." };
+        }
+    }
+
     const unit = await Unit.findOne({ _id: unitId, organizationId: orgId }).populate("propertyId", "name code");
     if (!unit) {
         return { success: false, message: "Unit not found." };

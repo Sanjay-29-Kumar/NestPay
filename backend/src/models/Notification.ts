@@ -4,11 +4,12 @@ export interface INotification extends Document {
     userId: Types.ObjectId;
     title: string;
     message: string;
-    type: "INVITATION" | "SYSTEM" | "IN_APP_MESSAGE";
+    type: "INVITATION" | "SYSTEM" | "IN_APP_MESSAGE" | "PAYMENT_REMINDER" | "PAYMENT_CONFIRMATION" | "MANUAL_WHATSAPP_ACTION" | "RENT_DUE";
     invitationToken?: string;
     organizationId?: Types.ObjectId;
     unitId?: Types.ObjectId;
     senderName?: string;
+    metadata?: Record<string, any>;
     isRead: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -31,7 +32,7 @@ const notificationSchema = new Schema<INotification>(
         },
         type: {
             type: String,
-            enum: ["INVITATION", "SYSTEM", "IN_APP_MESSAGE"],
+            enum: ["INVITATION", "SYSTEM", "IN_APP_MESSAGE", "PAYMENT_REMINDER", "PAYMENT_CONFIRMATION", "MANUAL_WHATSAPP_ACTION", "RENT_DUE"],
             default: "SYSTEM",
         },
         invitationToken: {
@@ -51,6 +52,10 @@ const notificationSchema = new Schema<INotification>(
         senderName: {
             type: String,
             default: "",
+        },
+        metadata: {
+            type: Schema.Types.Mixed,
+            default: {},
         },
         isRead: {
             type: Boolean,

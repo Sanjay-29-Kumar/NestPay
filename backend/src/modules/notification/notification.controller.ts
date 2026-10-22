@@ -263,6 +263,51 @@ export async function getUnitInAppMessages(req: Request, res: Response) {
     });
 }
 
+export async function logManualWhatsAppSend(req: Request, res: Response) {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const { organizationId, unitId, tenantName, phone, amount, dueDate, dayRule, notificationId } = req.body;
+    if (!organizationId || !unitId) {
+        return res.status(400).json({ success: false, message: "organizationId and unitId are required." });
+    }
+
+    const ReminderLog = (await import("../../models/ReminderLog.js")).default;
+    const logDoc = await ReminderLog.create({
+        organizationId,
+        unitId,
+        sentAt: new Date(),
+        channels: ["WhatsApp (Manual)"],
+        recipients: [
+            {
+                name: tenantName || "Tenant",
+                phone: phone || "",
+                email: "",
+                role: "Tenant",
+            },
+        ],
+        dayRule: dayRule || "Manual WhatsApp Send",
+        messageType: "REMINDER",
+        amount: Number(amount) || 0,
+        dueDate: dueDate ? new Date(dueDate) : new Date(),
+        status: "SUCCESS",
+        details: `Owner clicked Send via WhatsApp to ${tenantName || "Tenant"} (${phone || "N/A"}).`,
+    });
+
+    if (notificationId) {
+        await Notification.updateOne(
+            { _id: notificationId },
+            { isRead: true, "metadata.actionStatus": "SENT" }
+        ).catch(() => {});
+    }
+
+    return res.status(200).json({
+        success: true,
+        message: "Manual WhatsApp send recorded in reminder log successfully.",
+        data: logDoc,
+    });
+}
+
 
 
 
